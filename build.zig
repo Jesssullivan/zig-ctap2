@@ -39,4 +39,28 @@ pub fn build(b: *std.Build) void {
         });
         test_step.dependOn(&b.addRunArtifact(t).step);
     }
+
+    // Property-based tests
+    const pbt_step = b.step("test-pbt", "Run property-based tests");
+
+    inline for (.{
+        .{ .file = "tests/pbt_cbor.zig", .mod = "cbor" },
+        .{ .file = "tests/pbt_ctaphid.zig", .mod = "ctaphid" },
+    }) |entry| {
+        const t = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(entry.file),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = entry.mod, .module = b.createModule(.{
+                        .root_source_file = b.path("src/" ++ entry.mod ++ ".zig"),
+                        .target = target,
+                        .optimize = optimize,
+                    }) },
+                },
+            }),
+        });
+        pbt_step.dependOn(&b.addRunArtifact(t).step);
+    }
 }
