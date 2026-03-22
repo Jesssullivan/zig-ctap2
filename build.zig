@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) void {
         "src/cbor.zig",
         "src/ctaphid.zig",
         "src/ctap2.zig",
+        "src/pin.zig",
     }) |test_file| {
         const t = b.addTest(.{
             .root_module = b.createModule(.{
