@@ -27,16 +27,20 @@ pub const Device = struct {
     report_buf: [64]u8 = std.mem.zeroes([64]u8),
     report_ready: bool = false,
 
+    /// Last IOReturn error code for debugging.
+    pub var last_ioreturn: c_int = 0;
+
     /// Write a 64-byte packet to the device.
     pub fn write(self: *Device, packet: *const [64]u8) Error!void {
-        // IOHIDDeviceSetReport: report type Output, report ID 0, skip first byte convention
+        const ptr: [*c]const u8 = @ptrCast(packet);
         const result = c.IOHIDDeviceSetReport(
             self.ref,
             c.kIOHIDReportTypeOutput,
             0, // report ID
-            packet,
-            64,
+            ptr,
+            @as(c.CFIndex, 64),
         );
+        last_ioreturn = @intCast(result);
         if (result != c.kIOReturnSuccess) return Error.WriteFailed;
     }
 
