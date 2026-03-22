@@ -72,11 +72,15 @@ int ctap2_get_info(
     size_t result_buf_len
 );
 
+// Map a CTAP2 status byte to a human-readable error message.
+// Returns a pointer to a static null-terminated string.
+const char* ctap2_status_message(uint8_t status);
+
+// Debug: get the last IOReturn error code from HID operations.
+int ctap2_debug_last_ioreturn(void);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif // CTAP2_H
-
-// Debug: get the last IOReturn error code from HID operations.
-int ctap2_debug_last_ioreturn(void);

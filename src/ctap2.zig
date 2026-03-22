@@ -38,6 +38,26 @@ pub const StatusCode = enum(u8) {
     _,
 };
 
+/// Map a CTAP2 status byte to a human-readable message string.
+pub fn statusMessage(status: u8) [:0]const u8 {
+    return switch (status) {
+        0x00 => "Success",
+        0x01 => "Invalid command",
+        0x02 => "Invalid parameter",
+        0x03 => "Invalid length",
+        0x05 => "Timeout",
+        0x06 => "Channel busy",
+        0x27 => "Operation denied by user",
+        0x2E => "No credentials found for this site",
+        0x31 => "Incorrect PIN",
+        0x32 => "PIN blocked - too many attempts",
+        0x33 => "PIN authentication invalid",
+        0x35 => "PIN not set - configure a PIN on your security key first",
+        0x36 => "PIN policy violation (resident key requires PIN)",
+        else => "Unknown authenticator error",
+    };
+}
+
 /// Encode a makeCredential request into CBOR.
 pub fn encodeMakeCredential(
     buf: []u8,
@@ -202,4 +222,18 @@ test "encode getInfo" {
     // Single byte: command 0x04
     try std.testing.expectEqual(@as(usize, 1), encoded.len);
     try std.testing.expectEqual(@as(u8, 0x04), encoded[0]);
+}
+
+test "statusMessage known codes" {
+    try std.testing.expectEqualStrings("Success", statusMessage(0x00));
+    try std.testing.expectEqualStrings("Timeout", statusMessage(0x05));
+    try std.testing.expectEqualStrings("Operation denied by user", statusMessage(0x27));
+    try std.testing.expectEqualStrings("No credentials found for this site", statusMessage(0x2E));
+    try std.testing.expectEqualStrings("Incorrect PIN", statusMessage(0x31));
+    try std.testing.expectEqualStrings("PIN blocked - too many attempts", statusMessage(0x32));
+    try std.testing.expectEqualStrings("PIN not set - configure a PIN on your security key first", statusMessage(0x35));
+}
+
+test "statusMessage unknown code" {
+    try std.testing.expectEqualStrings("Unknown authenticator error", statusMessage(0xFF));
 }
