@@ -83,11 +83,11 @@ const char* msg = ctap2_status_message(0x35);
                │ C FFI (ctap2.h)
 ┌──────────────▼───────────────────────────────┐
 │  libctap2 (Zig)                              │
-│  ┌─────────────┐  ┌──────────┐  ┌────────┐  │
-│  │ ctap2.zig   │  │ cbor.zig │  │ hid.zig│  │
-│  │ commands +  │  │ encode/  │  │ compat │  │
-│  │ responses   │  │ decode   │  │ select │  │
-│  └─────────────┘  └──────────┘  └───┬────┘  │
+│  ┌─────────────┐  ┌──────────┐  ┌────────┐   │
+│  │ ctap2.zig   │  │ cbor.zig │  │ hid.zig│   │
+│  │ commands +  │  │ encode/  │  │ compat │   │
+│  │ responses   │  │ decode   │  │ select │   │
+│  └─────────────┘  └──────────┘  └───┬────┘   │
 │                                     │        │
 │  ┌──────────────────┐ ┌─────────────▼─────┐  │
 │  │ hid_macos.zig    │ │ hid_linux.zig     │  │
@@ -96,7 +96,7 @@ const char* msg = ctap2_status_message(0x35);
 └──────────────────────────────────────────────┘
                │ USB HID (64-byte packets)
          ┌─────▼─────┐
-         │  YubiKey   │
+         │  YubiKey  │
          └───────────┘
 ```
 
@@ -128,10 +128,7 @@ This library powers the FIDO2/WebAuthn support in [cmux](https://github.com/Jess
 - [x] getInfo — encoded, response parsing in progress
 - [x] CTAP2 error code mapping — human-readable messages
 - [x] CBOR response parsing — structured result types
-- [ ] PIN protocol (CTAP2 clientPIN 0x06)
-- [ ] Extensions (credProtect, hmac-secret)
+- [ ] PIN protocol (CTAP2 clientPIN 0x06) (in progress)
+- [ ] Extensions (credProtect, hmac-secret) (in progress)
 - [ ] NFC transport
 
-## License
-
-Apache 2.0
