@@ -246,6 +246,266 @@ export fn ctap2_get_info(
     return @intCast(result_len);
 }
 
+// ─── Parsed Response Functions ───────────────────────────────
+
+/// Perform authenticatorMakeCredential and parse the response.
+/// Sends the CTAP2 command, receives the raw response, then parses the CBOR
+/// attestation object to extract the credential ID and attestation object.
+///
+/// Returns CTAP2_OK on success, or negative error code.
+/// On CTAP2 device error (non-zero status byte), returns the positive status byte.
+export fn ctap2_make_credential_parsed(
+    client_data_hash: [*]const u8, // 32 bytes
+    rp_id: [*:0]const u8,
+    rp_name: [*:0]const u8,
+    user_id: [*]const u8,
+    user_id_len: usize,
+    user_name: [*:0]const u8,
+    user_display_name: [*:0]const u8,
+    alg_ids: [*]const i32,
+    alg_count: usize,
+    resident_key: bool,
+    // Output fields:
+    out_credential_id: [*]u8,
+    out_credential_id_len: *usize,
+    out_attestation_object: [*]u8,
+    out_attestation_object_len: *usize,
+) callconv(.c) c_int {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // Open first FIDO2 device
+    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    defer dev.close();
+
+    // Encode CTAP2 makeCredential command
+    var cmd_buf: [2048]u8 = undefined;
+    const cmd = ctap2.encodeMakeCredential(
+        &cmd_buf,
+        client_data_hash[0..32],
+        std.mem.span(rp_id),
+        std.mem.span(rp_name),
+        user_id[0..user_id_len],
+        std.mem.span(user_name),
+        std.mem.span(user_display_name),
+        @ptrCast(alg_ids[0..alg_count]),
+        resident_key,
+    ) catch return CTAP2_ERR_CBOR;
+
+    // Send and receive raw response
+    var raw_buf: [4096]u8 = undefined;
+    const raw_len = ctaphidTransaction(&dev, cmd, &raw_buf) catch |err| {
+        return switch (err) {
+            error.NoDeviceFound => CTAP2_ERR_NO_DEVICE,
+            error.Timeout => CTAP2_ERR_TIMEOUT,
+            error.WriteFailed => CTAP2_ERR_WRITE_FAILED,
+            error.ReadFailed => CTAP2_ERR_READ_FAILED,
+            error.BufferTooSmall => CTAP2_ERR_BUFFER_TOO_SMALL,
+            else => CTAP2_ERR_PROTOCOL,
+        };
+    };
+
+    // Parse the response
+    const result = ctap2.parseMakeCredentialResponse(raw_buf[0..raw_len]) catch return CTAP2_ERR_CBOR;
+
+    if (result.status != 0x00) {
+        return @intCast(result.status);
+    }
+
+    // Copy credential ID to output buffer
+    const cred_id = result.credential_id;
+    @memcpy(out_credential_id[0..cred_id.len], cred_id);
+    out_credential_id_len.* = cred_id.len;
+
+    // Copy attestation object to output buffer
+    const att_obj = result.attestation_object;
+    @memcpy(out_attestation_object[0..att_obj.len], att_obj);
+    out_attestation_object_len.* = att_obj.len;
+
+    return CTAP2_OK;
+}
+
+/// Perform authenticatorGetAssertion and parse the response.
+/// Sends the CTAP2 command, receives the raw response, then parses the CBOR
+/// to extract credential ID, authenticator data, signature, and user handle.
+///
+/// Returns CTAP2_OK on success, or negative error code.
+/// On CTAP2 device error (non-zero status byte), returns the positive status byte.
+export fn ctap2_get_assertion_parsed(
+    client_data_hash: [*]const u8, // 32 bytes
+    rp_id: [*:0]const u8,
+    allow_list_ids: ?[*]const [*]const u8,
+    allow_list_id_lens: ?[*]const usize,
+    allow_list_count: usize,
+    // Output fields:
+    out_credential_id: [*]u8,
+    out_credential_id_len: *usize,
+    out_auth_data: [*]u8,
+    out_auth_data_len: *usize,
+    out_signature: [*]u8,
+    out_signature_len: *usize,
+    out_user_handle: [*]u8,
+    out_user_handle_len: *usize,
+) callconv(.c) c_int {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // Open first FIDO2 device
+    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    defer dev.close();
+
+    // Build allow list slices
+    var ids_buf: [64][]const u8 = undefined;
+    const count = @min(allow_list_count, 64);
+    if (allow_list_ids != null and allow_list_id_lens != null) {
+        const ids = allow_list_ids.?;
+        const lens = allow_list_id_lens.?;
+        for (0..count) |i| {
+            ids_buf[i] = ids[i][0..lens[i]];
+        }
+    }
+
+    // Encode CTAP2 getAssertion command
+    var cmd_buf: [2048]u8 = undefined;
+    const cmd = ctap2.encodeGetAssertion(
+        &cmd_buf,
+        std.mem.span(rp_id),
+        client_data_hash[0..32],
+        if (allow_list_ids != null) ids_buf[0..count] else ids_buf[0..0],
+    ) catch return CTAP2_ERR_CBOR;
+
+    // Send and receive raw response
+    var raw_buf: [4096]u8 = undefined;
+    const raw_len = ctaphidTransaction(&dev, cmd, &raw_buf) catch |err| {
+        return switch (err) {
+            error.NoDeviceFound => CTAP2_ERR_NO_DEVICE,
+            error.Timeout => CTAP2_ERR_TIMEOUT,
+            error.WriteFailed => CTAP2_ERR_WRITE_FAILED,
+            error.ReadFailed => CTAP2_ERR_READ_FAILED,
+            error.BufferTooSmall => CTAP2_ERR_BUFFER_TOO_SMALL,
+            else => CTAP2_ERR_PROTOCOL,
+        };
+    };
+
+    // Build fallback credential ID (first entry in allow list, if exactly one)
+    const fallback_cred_id: ?[]const u8 = if (count == 1 and allow_list_ids != null and allow_list_id_lens != null)
+        allow_list_ids.?[0][0..allow_list_id_lens.?[0]]
+    else
+        null;
+
+    // Parse the response
+    const result = ctap2.parseGetAssertionResponse(raw_buf[0..raw_len], fallback_cred_id) catch return CTAP2_ERR_CBOR;
+
+    if (result.status != 0x00) {
+        return @intCast(result.status);
+    }
+
+    // Copy outputs
+    const cred_id = result.credential_id;
+    @memcpy(out_credential_id[0..cred_id.len], cred_id);
+    out_credential_id_len.* = cred_id.len;
+
+    const auth_data = result.auth_data;
+    @memcpy(out_auth_data[0..auth_data.len], auth_data);
+    out_auth_data_len.* = auth_data.len;
+
+    const sig = result.signature;
+    @memcpy(out_signature[0..sig.len], sig);
+    out_signature_len.* = sig.len;
+
+    const user_handle = result.user_handle;
+    @memcpy(out_user_handle[0..user_handle.len], user_handle);
+    out_user_handle_len.* = user_handle.len;
+
+    return CTAP2_OK;
+}
+
+/// Parse a raw CTAP2 MakeCredential response buffer (status byte + CBOR).
+/// This is a pure parsing function — no HID I/O.
+/// Useful when the caller already has the raw response bytes.
+///
+/// Returns CTAP2_OK on success, positive status byte on device error,
+/// or negative error code on parse failure.
+export fn ctap2_parse_make_credential_response(
+    response_data: [*]const u8,
+    response_len: usize,
+    out_credential_id: [*]u8,
+    out_credential_id_len: *usize,
+    out_attestation_object: [*]u8,
+    out_attestation_object_len: *usize,
+) callconv(.c) c_int {
+    const result = ctap2.parseMakeCredentialResponse(response_data[0..response_len]) catch return CTAP2_ERR_CBOR;
+
+    if (result.status != 0x00) {
+        return @intCast(result.status);
+    }
+
+    const cred_id = result.credential_id;
+    @memcpy(out_credential_id[0..cred_id.len], cred_id);
+    out_credential_id_len.* = cred_id.len;
+
+    const att_obj = result.attestation_object;
+    @memcpy(out_attestation_object[0..att_obj.len], att_obj);
+    out_attestation_object_len.* = att_obj.len;
+
+    return CTAP2_OK;
+}
+
+/// Parse a raw CTAP2 GetAssertion response buffer (status byte + CBOR).
+/// This is a pure parsing function — no HID I/O.
+///
+/// fallback_cred_id/fallback_cred_id_len: credential ID to use when the
+/// response omits key 1 (CTAP2 spec: single-entry allowList). Pass NULL/0
+/// if no fallback is available.
+///
+/// Returns CTAP2_OK on success, positive status byte on device error,
+/// or negative error code on parse failure.
+export fn ctap2_parse_get_assertion_response(
+    response_data: [*]const u8,
+    response_len: usize,
+    fallback_cred_id: ?[*]const u8,
+    fallback_cred_id_len: usize,
+    out_credential_id: [*]u8,
+    out_credential_id_len: *usize,
+    out_auth_data: [*]u8,
+    out_auth_data_len: *usize,
+    out_signature: [*]u8,
+    out_signature_len: *usize,
+    out_user_handle: [*]u8,
+    out_user_handle_len: *usize,
+) callconv(.c) c_int {
+    const fb: ?[]const u8 = if (fallback_cred_id) |ptr|
+        ptr[0..fallback_cred_id_len]
+    else
+        null;
+
+    const result = ctap2.parseGetAssertionResponse(response_data[0..response_len], fb) catch return CTAP2_ERR_CBOR;
+
+    if (result.status != 0x00) {
+        return @intCast(result.status);
+    }
+
+    const cred_id = result.credential_id;
+    @memcpy(out_credential_id[0..cred_id.len], cred_id);
+    out_credential_id_len.* = cred_id.len;
+
+    const auth_data = result.auth_data;
+    @memcpy(out_auth_data[0..auth_data.len], auth_data);
+    out_auth_data_len.* = auth_data.len;
+
+    const sig = result.signature;
+    @memcpy(out_signature[0..sig.len], sig);
+    out_signature_len.* = sig.len;
+
+    const user_handle = result.user_handle;
+    @memcpy(out_user_handle[0..user_handle.len], user_handle);
+    out_user_handle_len.* = user_handle.len;
+
+    return CTAP2_OK;
+}
+
 /// Map a CTAP2 status byte to a human-readable error message.
 /// Returns a pointer to a static null-terminated string.
 export fn ctap2_status_message(status: u8) callconv(.c) [*:0]const u8 {
