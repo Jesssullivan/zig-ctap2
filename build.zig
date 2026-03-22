@@ -15,10 +15,10 @@ pub fn build(b: *std.Build) void {
         .linkage = .static,
     });
 
-    if (target.result.os.tag == .macos) {
-        lib.root_module.linkFramework("IOKit", .{});
-        lib.root_module.linkFramework("CoreFoundation", .{});
-    }
+    // NOTE: IOKit and CoreFoundation are NOT linked here because this builds
+    // a static library. The frameworks are resolved at final link time by Xcode
+    // (via OTHER_LDFLAGS). Linking them here breaks cross-compilation (zig can't
+    // find frameworks when -Dtarget is set to a different arch).
 
     b.installArtifact(lib);
 
