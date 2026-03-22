@@ -1,0 +1,6 @@
+reviews:
+  auto_review:
+    enabled: true
+  path_filters:
+    - "!tests/pbt_*.zig"
+language: en
