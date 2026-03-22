@@ -246,6 +246,12 @@ export fn ctap2_get_info(
     return @intCast(result_len);
 }
 
+/// Map a CTAP2 status byte to a human-readable error message.
+/// Returns a pointer to a static null-terminated string.
+export fn ctap2_status_message(status: u8) callconv(.c) [*:0]const u8 {
+    return ctap2.statusMessage(status);
+}
+
 /// Debug: return the last IOReturn error code from HID write.
 export fn ctap2_debug_last_ioreturn() callconv(.c) c_int {
     return hid.platform.Device.last_ioreturn;
