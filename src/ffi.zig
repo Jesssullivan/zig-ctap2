@@ -245,3 +245,8 @@ export fn ctap2_get_info(
 
     return @intCast(result_len);
 }
+
+/// Debug: return the last IOReturn error code from HID write.
+export fn ctap2_debug_last_ioreturn() callconv(.c) c_int {
+    return hid.platform.Device.last_ioreturn;
+}
