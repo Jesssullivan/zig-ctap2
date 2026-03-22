@@ -33,15 +33,17 @@ pub const Device = struct {
     /// Write a 64-byte packet to the device.
     pub fn write(self: *Device, packet: *const [64]u8) Error!void {
         const ptr: [*c]const u8 = @ptrCast(packet);
+        // Use raw integer 1 for kIOHIDReportTypeOutput — Zig's @cImport may
+        // resolve the enum differently than the C compiler expects.
         const result = c.IOHIDDeviceSetReport(
             self.ref,
-            c.kIOHIDReportTypeOutput,
+            1, // kIOHIDReportTypeOutput = 1
             0, // report ID
             ptr,
             @as(c.CFIndex, 64),
         );
         last_ioreturn = @intCast(result);
-        if (result != c.kIOReturnSuccess) return Error.WriteFailed;
+        if (result != 0) return Error.WriteFailed; // kIOReturnSuccess = 0
     }
 
     /// Read a 64-byte packet from the device with timeout.
@@ -92,7 +94,7 @@ pub const Device = struct {
 
     /// Close the device.
     pub fn close(self: *Device) void {
-        _ = c.IOHIDDeviceClose(self.ref, c.kIOHIDOptionsTypeNone);
+        _ = c.IOHIDDeviceClose(self.ref, 0);
     }
 };
 
@@ -117,7 +119,7 @@ fn reportCallback(
 /// Enumerate connected FIDO2 USB HID devices.
 /// Returns device refs that must be closed by the caller.
 pub fn enumerate(allocator: std.mem.Allocator) ![]Device {
-    const manager = c.IOHIDManagerCreate(c.kCFAllocatorDefault, c.kIOHIDManagerOptionNone);
+    const manager = c.IOHIDManagerCreate(c.kCFAllocatorDefault, 0);
     if (manager == null) return Error.NoDeviceFound;
     defer c.CFRelease(manager);
 
@@ -144,7 +146,7 @@ pub fn enumerate(allocator: std.mem.Allocator) ![]Device {
     defer c.CFRelease(matching);
 
     c.IOHIDManagerSetDeviceMatching(manager, matching);
-    _ = c.IOHIDManagerOpen(manager, c.kIOHIDManagerOptionNone);
+    _ = c.IOHIDManagerOpen(manager, 0);
 
     const device_set = c.IOHIDManagerCopyDevices(manager);
     if (device_set == null) return &[0]Device{};
@@ -166,7 +168,7 @@ pub fn enumerate(allocator: std.mem.Allocator) ![]Device {
             const dev_ref: c.IOHIDDeviceRef = @constCast(@ptrCast(@alignCast(p)));
 
             // Try to open the device
-            if (c.IOHIDDeviceOpen(dev_ref, c.kIOHIDOptionsTypeNone) == c.kIOReturnSuccess) {
+            if (c.IOHIDDeviceOpen(dev_ref, 0) == 0) {
                 devices[valid] = .{ .ref = dev_ref };
                 valid += 1;
             }
