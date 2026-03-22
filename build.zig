@@ -63,4 +63,54 @@ pub fn build(b: *std.Build) void {
         });
         pbt_step.dependOn(&b.addRunArtifact(t).step);
     }
+
+    // Hardware integration tests (require physical YubiKey + YUBIKEY_TESTS=1)
+    const hw_step = b.step("test-hardware", "Run hardware tests (needs YubiKey)");
+
+    const hid_mod = b.createModule(.{
+        .root_source_file = b.path("src/hid.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const ctaphid_mod = b.createModule(.{
+        .root_source_file = b.path("src/ctaphid.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const cbor_mod = b.createModule(.{
+        .root_source_file = b.path("src/cbor.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const ctap2_mod = b.createModule(.{
+        .root_source_file = b.path("src/ctap2.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "cbor.zig", .module = cbor_mod },
+            .{ .name = "ctaphid.zig", .module = ctaphid_mod },
+        },
+    });
+
+    const hw_test = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/hardware_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "hid", .module = hid_mod },
+                .{ .name = "ctaphid", .module = ctaphid_mod },
+                .{ .name = "ctap2", .module = ctap2_mod },
+                .{ .name = "cbor", .module = cbor_mod },
+            },
+        }),
+    });
+
+    // hid_macos.zig needs IOKit + CoreFoundation at link time.
+    // (The static library skips this — Xcode links at final build —
+    //  but the test binary must resolve symbols itself.)
+    hw_test.root_module.linkFramework("IOKit", .{});
+    hw_test.root_module.linkFramework("CoreFoundation", .{});
+
+    hw_step.dependOn(&b.addRunArtifact(hw_test).step);
 }
