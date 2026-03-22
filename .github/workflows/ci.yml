@@ -31,3 +31,19 @@ jobs:
 
       - name: Run property-based tests
         run: zig build test-pbt
+
+  secrets-scan:
+    name: Secrets scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+
+      - name: Scan for secrets
+        run: |
+          detect-secrets scan --list > /dev/null
+          if [ -f .secrets.baseline ]; then
+            detect-secrets audit --report --baseline .secrets.baseline
+          fi
