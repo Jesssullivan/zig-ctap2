@@ -133,7 +133,7 @@ pub fn enumerate(allocator: std.mem.Allocator) ![]Device {
         if (ptr) |p| {
             const dev_ref: c.IOHIDDeviceRef = @constCast(@ptrCast(@alignCast(p)));
             if (c.IOHIDDeviceOpen(dev_ref, 0) == 0) {
-                c.CFRetain(@ptrCast(dev_ref));
+                _ = c.CFRetain(@ptrCast(dev_ref));
                 devices[valid] = .{ .ref = dev_ref, .manager = manager };
                 valid += 1;
             }
