@@ -26,6 +26,7 @@ extern "C" {
 #define CTAP2_ERR_READ_FAILED      -7
 #define CTAP2_ERR_CBOR             -8
 #define CTAP2_ERR_DEVICE           -9
+#define CTAP2_ERR_PIN             -10
 
 // Get the number of connected FIDO2 devices.
 int ctap2_device_count(void);
@@ -149,6 +150,76 @@ int ctap2_parse_get_assertion_response(
     size_t response_len,
     const uint8_t *fallback_cred_id,     // nullable
     size_t fallback_cred_id_len,
+    uint8_t *out_credential_id,
+    size_t *out_credential_id_len,
+    uint8_t *out_auth_data,
+    size_t *out_auth_data_len,
+    uint8_t *out_signature,
+    size_t *out_signature_len,
+    uint8_t *out_user_handle,
+    size_t *out_user_handle_len
+);
+
+// ─── PIN protocol functions ─────────────────────────────────
+// CTAP2 Client PIN protocol v2 for YubiKeys with a PIN set.
+// These implement the authenticatorClientPIN (0x06) command.
+
+// Get PIN retry count from the authenticator.
+// out_retries: receives the number of remaining PIN retries.
+// Returns CTAP2_OK on success, or negative error code.
+int ctap2_get_pin_retries(int *out_retries);
+
+// Get a PIN token for authentication.
+// Performs the full PIN protocol v2 handshake (key agreement + ECDH +
+// PIN encryption) and returns a decrypted 32-byte PIN token.
+//
+// pin: null-terminated UTF-8 PIN string.
+// out_pin_token: receives the 32-byte decrypted PIN token.
+// out_pin_token_len: must be >= 32.
+//
+// Returns CTAP2_OK on success, positive CTAP2 status byte on device
+// error (e.g. 0x31 = wrong PIN), or negative error code.
+int ctap2_get_pin_token(
+    const char *pin,
+    uint8_t *out_pin_token,
+    size_t out_pin_token_len
+);
+
+// ─── PIN-authenticated parsed functions ─────────────────────
+// Same as the parsed functions above, but with optional PIN auth.
+// Pass pin_token=NULL, pin_protocol=0 for no PIN authentication.
+// Pass pin_token=<32-byte token from ctap2_get_pin_token>, pin_protocol=2
+// to include pinAuth in the CTAP2 command.
+
+int ctap2_make_credential_with_pin(
+    const uint8_t *client_data_hash,     // 32 bytes
+    const char *rp_id,                    // null-terminated
+    const char *rp_name,                  // null-terminated
+    const uint8_t *user_id,
+    size_t user_id_len,
+    const char *user_name,               // null-terminated
+    const char *user_display_name,       // null-terminated
+    const int32_t *alg_ids,              // COSE algorithm IDs
+    size_t alg_count,
+    bool resident_key,
+    const uint8_t *pin_token,            // 32 bytes, or NULL for no PIN
+    uint8_t pin_protocol,                // 0 = no PIN, 2 = PIN protocol v2
+    // Output fields:
+    uint8_t *out_credential_id,
+    size_t *out_credential_id_len,
+    uint8_t *out_attestation_object,
+    size_t *out_attestation_object_len
+);
+
+int ctap2_get_assertion_with_pin(
+    const uint8_t *client_data_hash,     // 32 bytes
+    const char *rp_id,                    // null-terminated
+    const uint8_t *const *allow_list_ids,    // nullable
+    const size_t *allow_list_id_lens,        // nullable
+    size_t allow_list_count,
+    const uint8_t *pin_token,            // 32 bytes, or NULL for no PIN
+    uint8_t pin_protocol,                // 0 = no PIN, 2 = PIN protocol v2
+    // Output fields:
     uint8_t *out_credential_id,
     size_t *out_credential_id_len,
     uint8_t *out_auth_data,

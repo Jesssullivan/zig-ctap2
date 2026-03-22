@@ -147,6 +147,12 @@ pub const Encoder = struct {
 
 // ─── Decoder ────────────────────────────────────────────────
 
+/// A decoded CBOR header: major type and argument.
+pub const Header = struct {
+    major: MajorType,
+    arg: u64,
+};
+
 pub const Decoder = struct {
     data: []const u8,
     pos: usize = 0,
@@ -174,7 +180,7 @@ pub const Decoder = struct {
     }
 
     /// Read a CBOR type header, returning (major type, argument).
-    fn readHeader(self: *Decoder) Error!struct { major: MajorType, arg: u64 } {
+    fn readHeader(self: *Decoder) Error!Header {
         const initial = try self.readByte();
         const major: MajorType = @enumFromInt(@as(u3, @intCast(initial >> 5)));
         const additional = initial & 0x1F;
@@ -272,7 +278,7 @@ pub const Decoder = struct {
     }
 
     /// Decode a header and return the raw major type + arg for flexible handling.
-    pub fn decodeRawHeader(self: *Decoder) Error!struct { major: MajorType, arg: u64 } {
+    pub fn decodeRawHeader(self: *Decoder) Error!Header {
         return self.readHeader();
     }
 };
