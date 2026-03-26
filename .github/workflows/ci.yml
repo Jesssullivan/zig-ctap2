@@ -39,11 +39,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install detect-secrets
-        run: pip install detect-secrets
+        run: pip install "detect-secrets>=1.4"
 
       - name: Scan for secrets
         run: |
-          detect-secrets scan --list > /dev/null
+          detect-secrets scan > /dev/null
           if [ -f .secrets.baseline ]; then
             detect-secrets audit --report --baseline .secrets.baseline
           fi
