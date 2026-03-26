@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) void {
                 .root_source_file = b.path(test_file),
                 .target = target,
                 .optimize = optimize,
+
             }),
         });
         test_step.dependOn(&b.addRunArtifact(t).step);
@@ -53,6 +54,7 @@ pub fn build(b: *std.Build) void {
                 .root_source_file = b.path(entry.file),
                 .target = target,
                 .optimize = optimize,
+
                 .imports = &.{
                     .{ .name = entry.mod, .module = b.createModule(.{
                         .root_source_file = b.path("src/" ++ entry.mod ++ ".zig"),
