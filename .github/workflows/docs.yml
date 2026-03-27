@@ -21,8 +21,8 @@ jobs:
       - name: Install dependencies
         run: pip install mkdocs-material pymdown-extensions
 
-      - name: Generate API docs
-        run: python scripts/gen_api_docs.py
+      - name: Generate docs
+        run: python scripts/gen_docs.py
 
       - name: Deploy docs
         run: mkdocs gh-deploy --force
