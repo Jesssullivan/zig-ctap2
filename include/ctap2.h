@@ -230,6 +230,40 @@ int ctap2_get_assertion_with_pin(
     size_t *out_user_handle_len
 );
 
+// ─── Keepalive callback variants ─────────────────────────────
+// Same as raw functions but with a keepalive callback invoked when
+// the device sends CTAPHID_KEEPALIVE (e.g., waiting for user touch).
+// Status byte values: 1 = processing, 2 = user presence needed.
+
+typedef void (*ctap2_keepalive_callback_t)(uint8_t status);
+
+int ctap2_make_credential_with_keepalive(
+    const uint8_t *client_data_hash,
+    const char *rp_id,
+    const char *rp_name,
+    const uint8_t *user_id,
+    size_t user_id_len,
+    const char *user_name,
+    const char *user_display_name,
+    const int32_t *alg_ids,
+    size_t alg_count,
+    bool resident_key,
+    ctap2_keepalive_callback_t keepalive_cb,
+    uint8_t *result_buf,
+    size_t result_buf_len
+);
+
+int ctap2_get_assertion_with_keepalive(
+    const uint8_t *client_data_hash,
+    const char *rp_id,
+    const uint8_t *const *allow_list_ids,
+    const size_t *allow_list_id_lens,
+    size_t allow_list_count,
+    ctap2_keepalive_callback_t keepalive_cb,
+    uint8_t *result_buf,
+    size_t result_buf_len
+);
+
 // ─── Utility functions ──────────────────────────────────────
 
 // Map a CTAP2 status byte to a human-readable error message string.
