@@ -1,0 +1,138 @@
+# zig-ctap2
+
+> Portable CTAP2/FIDO2 library in Zig -- direct USB HID communication with security keys (YubiKey, SoloKeys, etc.), no Apple entitlements or platform authentication frameworks needed.
+
+## Source Structure
+
+- `src/cbor.zig` - Minimal CBOR encoder/decoder for CTAP2.
+- `src/ctap2.zig` - CTAP2 command encoding and response parsing.
+- `src/ctaphid.zig` - CTAPHID transport framing for FIDO2 USB HID communication.
+- `src/ffi.zig` - C FFI exports for libctap2.
+- `src/hid.zig` - Platform-selected USB HID transport for FIDO2 devices.
+- `src/hid_linux.zig` - Linux USB HID transport via hidraw.
+- `src/hid_macos.zig` - macOS USB HID transport via IOKit.
+- `src/pin.zig` - CTAP2 Client PIN protocol v2 (authenticatorClientPIN comm...
+- `include/ctap2.h` - C header -- 17 functions
+
+## C API (ctap2.h)
+
+- `ctap2_device_count`: Get the number of connected FIDO2 devices.
+- `ctap2_make_credential`: Perform authenticatorMakeCredential. client_data_hash must be 32 bytes (SHA-256 of clientDataJSON). Returns bytes written to result_buf, or negative error code. result_buf contains the raw CTAP2 response (status byte + CBOR).
+- `ctap2_get_assertion`: Perform authenticatorGetAssertion. client_data_hash must be 32 bytes. allow_list_ids is an array of pointers to credential IDs. allow_list_id_lens is an array of lengths for each credential ID. Returns bytes written to result_buf, or negative error code.
+- `ctap2_get_info`: Perform authenticatorGetInfo. Returns bytes written to result_buf, or negative error code. result_buf contains the raw CTAP2 response (status byte + CBOR).
+- `ctap2_make_credential_parsed`: Combined: send makeCredential + parse response. Output buffers should be at least 1024 bytes for credential_id, and 4096 bytes for attestation_object.
+- `ctap2_get_assertion_parsed`: Combined: send getAssertion + parse response. Output buffers should be at least 1024 bytes each. allow_list_ids/allow_list_id_lens can be NULL when allow_list_count is 0.
+- `ctap2_parse_make_credential_response`: Parse a raw MakeCredential response (status byte + CBOR attestation object).
+- `ctap2_parse_get_assertion_response`: Parse a raw GetAssertion response (status byte + CBOR). fallback_cred_id: credential ID to use when the response omits key 1 (CTAP2 spec: single-entry allowList). Pass NULL/0 if no fallback.
+- `ctap2_get_pin_retries`: Get PIN retry count from the authenticator. out_retries: receives the number of remaining PIN retries. Returns CTAP2_OK on success, or negative error code.
+- `ctap2_get_pin_token`: Get a PIN token for authentication. Performs the full PIN protocol v2 handshake (key agreement + ECDH + PIN encryption) and returns a decrypted 32-byte PIN token. pin: null-terminated UTF-8 PIN string. out_pin_token: receives the 32-byte decrypted PIN token. out_pin_token_len: must be >= 32. Returns CTAP2_OK on success, positive CTAP2 status byte on device error (e.g. 0x31 = wrong PIN), or negative error code.
+- `ctap2_make_credential_with_pin`: Same as the parsed functions above, but with optional PIN auth. Pass pin_token=NULL, pin_protocol=0 for no PIN authentication. Pass pin_token=<32-byte token from ctap2_get_pin_token>, pin_protocol=2 to include pinAuth in the CTAP2 command.
+- `ctap2_get_assertion_with_pin`
+- `ctap2_make_credential_with_keepalive`
+- `ctap2_get_assertion_with_keepalive`
+- `ctap2_debug_last_ioreturn`: Debug: get the last IOReturn error code from HID operations.
+
+## Zig API
+
+### cbor.zig
+- `Value` (union)
+- `MapEntry` (struct)
+- `Encoder` (struct)
+- `Header` (struct)
+- `Decoder` (struct)
+- `init`
+- `written`
+- `encodeUint`: Encode an unsigned integer.
+- `encodeNegInt`: Encode a negative integer (CBOR stores as -1 - n).
+- `encodeByteString`: Encode a byte string.
+- `encodeTextString`: Encode a text string.
+- `beginArray`: Begin an array of known length.
+- `beginMap`: Begin a map of known length.
+- `encodeBool`: Encode a boolean.
+- `encodeNull`: Encode null.
+- `init`
+- `remaining`
+- `decodeUint`: Decode a single unsigned integer.
+- `decodeByteString`: Decode a byte string, returning a slice into the source data.
+- `decodeTextString`: Decode a text string, returning a slice into the source data.
+- `decodeArrayHeader`: Decode an array header, returning the element count.
+- `decodeMapHeader`: Decode a map header, returning the entry count.
+- `peekMajorType`: Peek at the major type of the next value without consuming it.
+- `skipValue`: Skip a single CBOR value (including nested structures).
+- `decodeRawHeader`: Decode a header and return the raw major type + arg for flexible handling.
+
+### ctap2.zig
+- `CommandCode` (enum)
+- `StatusCode` (enum)
+- `MakeCredentialResult` (struct)
+- `GetAssertionResult` (struct)
+- `statusMessage`: Map a CTAP2 status byte to a human-readable message string.
+- `encodeMakeCredential`: Encode a makeCredential request into CBOR.
+- `encodeGetAssertion`: Encode a getAssertion request into CBOR.
+- `encodeGetInfo`: Encode a getInfo request.
+- `parseMakeCredentialResponse`: Parse a raw CTAP2 authenticatorMakeCredential response.  The response format is: status_byte(1) + CBOR_map The CBOR map has integer keys: 1 = fmt (text string) 2 = authData (byte string) 3 = attStmt (map)  From authData we extract the credential ID: rpIdHash(32) + flags(1) + signCount(4) + [aaguid(16) + credIdLen(2) + credentialId(credIdLen) + ...]
+- `parseGetAssertionResponse`: Parse a raw CTAP2 authenticatorGetAssertion response.  The response format is: status_byte(1) + CBOR_map The CBOR map has integer keys: 1 = credential (map with "id" byte string) — optional per spec 2 = authData (byte string) 3 = signature (byte string) 4 = user (map with "id" byte string) — optional  Per CTAP2 spec: key 1 (credential) is omitted when the allowList in the request had exactly one entry. In that case, use the fallback credential ID.
+
+### ctaphid.zig
+- `Command` (enum)
+- `KeepaliveStatus` (enum)
+- `InitHeader` (struct)
+- `InitResponse` (struct)
+- `buildInitPacket`: Build an initialization packet.
+- `buildContPacket`: Build a continuation packet.
+- `fragmentMessage`: Fragment a message into CTAPHID packets. Returns the number of packets written to `out`.
+- `parseInitPacket`
+- `reassembleMessage`: Reassemble a complete message from init + continuation packets. `read_fn` is called to get each subsequent packet.
+- `parseInitResponse`: Parse a CTAPHID_INIT response payload.
+
+### hid_linux.zig
+- `Device` (struct)
+- `write`: Write a 64-byte packet to the device.
+- `read`: Read a 64-byte packet from the device with timeout.
+- `close`: Close the device.
+- `enumerate`: Enumerate connected FIDO2 USB HID devices.
+- `openFirst`: Find and open the first available FIDO2 device.
+
+### hid_macos.zig
+- `Device` (struct)
+- `write`
+- `read`
+- `close`
+- `enumerate`
+- `openFirst`
+
+### pin.zig
+- `SubCommand` (enum)
+- `PINRetriesResult` (struct)
+- `CoseKey` (struct)
+- `EphemeralKeyPair` (struct)
+- `SharedSecret` (struct)
+- `PINTokenResult` (struct)
+- `generateKeyPair`: Generate an ephemeral ECDH P-256 key pair for key agreement.
+- `deriveSharedSecret`: Perform ECDH: multiply their public point by our private scalar. Returns SHA-256 of the x-coordinate of the shared point.
+- `computeHmac`: Compute HMAC-SHA-256(key, message).
+- `computePinAuth`: Compute pinAuth: first 16 bytes of HMAC-SHA-256(pinToken, message). Used for authenticating commands with a PIN token.
+- `aes256CbcEncrypt`: AES-256-CBC encrypt (with zero IV, per CTAP2 PIN protocol v2 spec). Input must be a multiple of 16 bytes. Returns the ciphertext (same length as input).
+- `aes256CbcDecrypt`: AES-256-CBC decrypt (with zero IV, per CTAP2 PIN protocol v2 spec). Input must be a multiple of 16 bytes. Returns the plaintext (same length as input).
+- `encodeGetPINRetries`: Encode a getPINRetries request. Request: {1: pinUvAuthProtocol(2), 2: subCommand(1)}
+- `encodeGetKeyAgreement`: Encode a getKeyAgreement request. Request: {1: pinUvAuthProtocol(2), 2: subCommand(2)}
+- `encodeGetPINToken`: Encode a getPinUvAuthTokenUsingPinWithPermissions request (subCommand 0x09). Request: {1: protocol, 2: subCommand(9), 3: keyAgreement(COSE_Key), 6: pinHashEnc}
+- `parsePINRetriesResponse`: Parse a getPINRetries response. Response CBOR (after status byte): {3: pinRetries, 4: powerCycleState(optional)}
+- `parseKeyAgreementResponse`: Parse a getKeyAgreement response. Response CBOR (after status byte): {1: keyAgreement(COSE_Key)} COSE_Key: {1: kty(2), 3: alg(-25), -1: crv(1), -2: x(32 bytes), -3: y(32 bytes)}
+- `parsePINTokenResponse`: Parse a getPINToken response. Response CBOR (after status byte): {2: pinUvAuthToken(encrypted bytes)}
+- `encryptPINHash`: Prepare the encrypted PIN hash for a getPINToken request. Takes a UTF-8 PIN string, hashes it with SHA-256, takes the first 16 bytes, pads to 64 bytes, and encrypts with AES-256-CBC using the shared secret.  Returns the 64-byte encrypted PIN hash.
+- `encodeMakeCredentialWithPIN`: Encode a makeCredential command with pinAuth and pinUvAuthProtocol. This adds parameters 8 (pinUvAuthProtocol) and 9 (pinAuth) to the command.  pinAuth = LEFT(HMAC-SHA-256(pinToken, clientDataHash), 16)
+- `encodeGetAssertionWithPIN`: Encode a getAssertion command with pinAuth and pinUvAuthProtocol.
+
+## Build
+
+```
+zig build                    # build static library
+zig build test               # run unit tests
+```
+
+## Platform Support
+
+- macOS (arm64, x86_64)
+- Linux (arm64, x86_64)
+
