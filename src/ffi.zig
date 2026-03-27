@@ -916,8 +916,8 @@ export fn ctap2_make_credential_with_keepalive(
 export fn ctap2_get_assertion_with_keepalive(
     client_data_hash: [*]const u8,
     rp_id: [*:0]const u8,
-    allow_list_ids: ?[*]const ?[*]const u8,
-    allow_list_id_lens: ?[*]const usize,
+    allow_list_ids: [*]const [*]const u8,
+    allow_list_id_lens: [*]const usize,
     allow_list_count: usize,
     keepalive_cb: KeepaliveCallback,
     result_buf: [*]u8,
@@ -930,26 +930,20 @@ export fn ctap2_get_assertion_with_keepalive(
     var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
     defer dev.close();
 
+    // Build allow list slices (same pattern as ctap2_get_assertion)
+    var ids_buf: [64][]const u8 = undefined;
+    const count = @min(allow_list_count, 64);
+    for (0..count) |i| {
+        ids_buf[i] = allow_list_ids[i][0..allow_list_id_lens[i]];
+    }
+
     var cmd_buf: [2048]u8 = undefined;
-    const cmd = blk: {
-        if (allow_list_count > 0 and allow_list_ids != null and allow_list_id_lens != null) {
-            break :blk ctap2.encodeGetAssertion(
-                &cmd_buf,
-                client_data_hash[0..32],
-                std.mem.span(rp_id),
-                allow_list_ids.?[0..allow_list_count],
-                allow_list_id_lens.?[0..allow_list_count],
-            ) catch return CTAP2_ERR_CBOR;
-        } else {
-            break :blk ctap2.encodeGetAssertion(
-                &cmd_buf,
-                client_data_hash[0..32],
-                std.mem.span(rp_id),
-                &[_]?[*]const u8{},
-                &[_]usize{},
-            ) catch return CTAP2_ERR_CBOR;
-        }
-    };
+    const cmd = ctap2.encodeGetAssertion(
+        &cmd_buf,
+        std.mem.span(rp_id),
+        client_data_hash[0..32],
+        ids_buf[0..count],
+    ) catch return CTAP2_ERR_CBOR;
 
     const result_len = ctaphidTransactionWithCallback(&dev, cmd, result_buf[0..result_buf_len], keepalive_cb) catch |err| {
         return switch (err) {
