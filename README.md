@@ -1,6 +1,6 @@
 # zig-ctap2
 
-Portable CTAP2/FIDO2 library in Zig — direct USB HID communication with security keys (YubiKey, SoloKeys, etc.), no Apple entitlements or platform authentication frameworks needed.
+Portable CTAP2/FIDO2 library in Zig -- direct USB HID communication with security keys (YubiKey, SoloKeys, etc.), no Apple entitlements or platform authentication frameworks needed.
 
 **License:** Zlib OR MIT
 
@@ -24,38 +24,6 @@ Apple's `ASAuthorizationController` requires a restricted entitlement + provisio
 - Zig 0.15.2+
 - macOS 13+ (IOKit) or Linux (hidraw)
 - USB security key (tested with YubiKey 5C NFC)
-
-## Build
-
-```bash
-# Static library (libctap2.a)
-zig build -Doptimize=ReleaseFast
-
-# Run unit tests
-zig build test
-
-# Run property-based tests
-zig build test-pbt
-
-# Run hardware tests (requires YubiKey connected)
-YUBIKEY_TESTS=1 zig build test-hardware
-```
-
-With [just](https://just.systems) (recommended):
-
-```bash
-just test-all     # unit + PBT tests
-just build        # ReleaseFast static library
-just info         # show library stats
-just              # list all recipes
-```
-
-With Nix:
-
-```bash
-nix develop       # dev shell (zig, just, detect-secrets, pre-commit)
-nix build         # build library package
-```
 
 ## Architecture
 
@@ -119,108 +87,49 @@ graph TD
     style PV fill:#d85,stroke:#a63
 ```
 
+## Build
+
+```bash
+# Static library (libctap2.a)
+zig build -Doptimize=ReleaseFast
+
+# Run unit tests
+zig build test
+
+# Run property-based tests
+zig build test-pbt
+
+# Run hardware tests (requires YubiKey connected)
+YUBIKEY_TESTS=1 zig build test-hardware
+```
+
+With [just](https://just.systems) (recommended):
+
+```bash
+just test-all     # unit + PBT tests
+just build        # ReleaseFast static library
+just info         # show library stats
+just              # list all recipes
+```
+
+With Nix:
+
+```bash
+nix develop       # dev shell (zig, just, detect-secrets, pre-commit)
+nix build         # build library package
+```
+
+## Platform Support
+
+| Platform | Transport | Status |
+|----------|-----------|--------|
+| macOS 13+ (arm64/x86_64) | IOKit HID | Tested |
+| Linux (x86_64/arm64) | hidraw | Supported |
+| Cross-compilation | `zig build -Dtarget=...` | Supported |
+
 ## C API
 
 All functions are blocking (with timeouts) and thread-safe. See [`include/ctap2.h`](include/ctap2.h) for full signatures.
-
-### Core Operations
-
-```c
-#include "ctap2.h"
-
-// Enumerate connected FIDO2 devices
-int count = ctap2_device_count();
-
-// Register a credential (raw CBOR response)
-int bytes = ctap2_make_credential(
-    client_data_hash, rp_id, rp_name,
-    user_id, user_id_len, user_name, user_display_name,
-    alg_ids, alg_count, resident_key,
-    result_buf, result_buf_len
-);
-
-// Authenticate (raw CBOR response)
-int bytes = ctap2_get_assertion(
-    client_data_hash, rp_id,
-    allow_list_ids, allow_list_id_lens, allow_list_count,
-    result_buf, result_buf_len
-);
-
-// Get device capabilities
-int bytes = ctap2_get_info(result_buf, result_buf_len);
-```
-
-### Parsed Responses
-
-These perform the CTAP2 command AND parse the CBOR, returning structured fields:
-
-```c
-// Register + parse → credential_id, attestation_object
-int status = ctap2_make_credential_parsed(
-    client_data_hash, rp_id, rp_name,
-    user_id, user_id_len, user_name, user_display_name,
-    alg_ids, alg_count, resident_key,
-    out_credential_id, &out_credential_id_len,
-    out_attestation_object, &out_attestation_object_len
-);
-
-// Authenticate + parse → credential_id, auth_data, signature, user_handle
-int status = ctap2_get_assertion_parsed(
-    client_data_hash, rp_id,
-    allow_list_ids, allow_list_id_lens, allow_list_count,
-    out_credential_id, &out_credential_id_len,
-    out_auth_data, &out_auth_data_len,
-    out_signature, &out_signature_len,
-    out_user_handle, &out_user_handle_len
-);
-```
-
-### Pure Parsing (no I/O)
-
-Parse raw CTAP2 response bytes you already have:
-
-```c
-ctap2_parse_make_credential_response(response, len, ...);
-ctap2_parse_get_assertion_response(response, len, fallback_cred, ...);
-```
-
-### PIN Protocol
-
-```c
-// Check remaining PIN retries
-int retries;
-ctap2_get_pin_retries(&retries);
-
-// Get PIN token (ECDH + AES-256-CBC handshake)
-uint8_t pin_token[32];
-ctap2_get_pin_token("123456", pin_token, 32);
-
-// PIN-authenticated registration
-ctap2_make_credential_with_pin(
-    client_data_hash, rp_id, rp_name, ...,
-    pin_token, 2,  // pin_protocol = 2
-    out_credential_id, &out_credential_id_len,
-    out_attestation_object, &out_attestation_object_len
-);
-
-// PIN-authenticated assertion
-ctap2_get_assertion_with_pin(
-    client_data_hash, rp_id, ...,
-    pin_token, 2,
-    out_credential_id, &out_credential_id_len, ...
-);
-```
-
-### Utilities
-
-```c
-// Human-readable error messages
-const char *msg = ctap2_status_message(0x35);
-// → "PIN not set - configure a PIN on your security key first"
-
-// Debug: last IOKit return code
-int ioret = ctap2_debug_last_ioreturn();
-```
 
 ### Status Codes
 
@@ -249,11 +158,24 @@ On macOS with hardened runtime, add to your entitlements:
 
 The user must grant **Input Monitoring** permission in System Settings > Privacy & Security.
 
-No other entitlements needed — no `com.apple.developer.web-browser.public-key-credential`, no provisioning profile, no Apple Developer portal configuration.
+No other entitlements needed -- no `com.apple.developer.web-browser.public-key-credential`, no provisioning profile, no Apple Developer portal configuration.
+
+## Integration
+
+### As a Git Submodule
+
+```bash
+git submodule add https://github.com/Jesssullivan/zig-ctap2.git vendor/ctap2
+cd vendor/ctap2 && zig build -Doptimize=ReleaseFast
+```
+
+Link (macOS): `-lctap2 -framework IOKit -framework CoreFoundation`
+
+Include: `#include "ctap2.h"` (path: `vendor/ctap2/include/`)
 
 ## Integration with cmux
 
-This library powers the FIDO2/WebAuthn support in [cmux](https://github.com/Jesssullivan/cmux) (fork), integrated as a git submodule at `vendor/ctap2`. The JS bridge in WKWebView intercepts `navigator.credentials.create/get` and routes to libctap2 via Swift C FFI.
+This library powers the FIDO2/WebAuthn support in [cmux](https://github.com/Jesssullivan/cmux), integrated as a git submodule at `vendor/ctap2`. The JS bridge in WKWebView intercepts `navigator.credentials.create/get` and routes to libctap2 via Swift C FFI.
 
 ## Tested Devices
 
@@ -269,6 +191,7 @@ This library powers the FIDO2/WebAuthn support in [cmux](https://github.com/Jess
 - [x] PIN protocol v2 (ECDH P-256, AES-256-CBC, HMAC-SHA-256)
 - [x] Property-based tests (CBOR + CTAPHID, 1000 iterations each)
 - [x] Hardware integration tests (YubiKey roundtrips)
+- [x] Keepalive callback support (user touch indicator)
 - [ ] Extensions (credProtect, hmac-secret)
 - [ ] NFC transport
 
