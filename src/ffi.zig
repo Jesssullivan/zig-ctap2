@@ -23,12 +23,26 @@ const CTAP2_ERR_CBOR: c_int = -8;
 const CTAP2_ERR_DEVICE: c_int = -9;
 const CTAP2_ERR_PIN: c_int = -10;
 
+/// Keepalive callback type: receives status byte (1=processing, 2=user presence needed).
+pub const KeepaliveCallback = ?*const fn (u8) callconv(.c) void;
+
 /// Perform a full CTAPHID transaction: send command, receive response.
 /// Handles CTAPHID_INIT (channel negotiation) + CTAPHID_CBOR (command).
+/// If keepalive_cb is non-null, it's called with the keepalive status byte
+/// whenever the device sends a keepalive packet (e.g., waiting for user touch).
 fn ctaphidTransaction(
     dev: *hid.Device,
     cmd_payload: []const u8,
     result_buf: []u8,
+) !usize {
+    return ctaphidTransactionWithCallback(dev, cmd_payload, result_buf, null);
+}
+
+fn ctaphidTransactionWithCallback(
+    dev: *hid.Device,
+    cmd_payload: []const u8,
+    result_buf: []u8,
+    keepalive_cb: KeepaliveCallback,
 ) !usize {
     // Step 1: CTAPHID_INIT to get a channel ID
     var nonce: [8]u8 = undefined;
@@ -62,7 +76,11 @@ fn ctaphidTransaction(
     while (true) {
         const hdr = ctaphid.parseInitPacket(&first_pkt) catch break;
         if (hdr.cmd == .keepalive) {
-            // Keep reading — device is waiting for user touch
+            // Status byte at position 7: 1=processing, 2=user presence needed
+            if (keepalive_cb) |cb| {
+                const status = first_pkt[7];
+                cb(status);
+            }
             first_pkt = try dev.read(30000);
             continue;
         }
@@ -84,10 +102,13 @@ fn ctaphidTransaction(
     // Read continuation packets
     while (offset < total_len) {
         const cont_pkt = try dev.read(5000);
-        // Skip keepalive
+        // Skip keepalive (invoke callback if set)
         if (cont_pkt[4] & 0x80 != 0) {
             const cont_hdr = ctaphid.parseInitPacket(&cont_pkt) catch continue;
-            if (cont_hdr.cmd == .keepalive) continue;
+            if (cont_hdr.cmd == .keepalive) {
+                if (keepalive_cb) |cb| cb(cont_pkt[7]);
+                continue;
+            }
         }
         const cont_copy = @min(total_len - offset, ctaphid.CONT_DATA_SIZE);
         @memcpy(resp_buf[offset..][0..cont_copy], cont_pkt[5..][0..cont_copy]);
@@ -157,7 +178,7 @@ export fn ctap2_make_credential(
     ) catch return CTAP2_ERR_CBOR;
 
     // Send and receive
-    const result_len = ctaphidTransaction(&dev, cmd, result_buf[0..result_buf_len]) catch |err| {
+    const result_len = ctaphidTransactionWithCallback(&dev, cmd, result_buf[0..result_buf_len], null) catch |err| {
         return switch (err) {
             error.NoDeviceFound => CTAP2_ERR_NO_DEVICE,
             error.Timeout => CTAP2_ERR_TIMEOUT,
@@ -836,4 +857,110 @@ export fn ctap2_get_assertion_with_pin(
     out_user_handle_len.* = user_handle.len;
 
     return CTAP2_OK;
+}
+
+// ─── Keepalive callback variants ─────────────────────────────
+// Same as ctap2_make_credential / ctap2_get_assertion but with
+// a keepalive callback invoked when the device is waiting for
+// user presence (touch). Status byte: 1=processing, 2=upneeded.
+
+export fn ctap2_make_credential_with_keepalive(
+    client_data_hash: [*]const u8,
+    rp_id: [*:0]const u8,
+    rp_name: [*:0]const u8,
+    user_id: [*]const u8,
+    user_id_len: usize,
+    user_name: [*:0]const u8,
+    user_display_name: [*:0]const u8,
+    alg_ids: [*]const i32,
+    alg_count: usize,
+    resident_key: bool,
+    keepalive_cb: KeepaliveCallback,
+    result_buf: [*]u8,
+    result_buf_len: usize,
+) callconv(.c) c_int {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    defer dev.close();
+
+    var cmd_buf: [2048]u8 = undefined;
+    const cmd = ctap2.encodeMakeCredential(
+        &cmd_buf,
+        client_data_hash[0..32],
+        std.mem.span(rp_id),
+        std.mem.span(rp_name),
+        user_id[0..user_id_len],
+        std.mem.span(user_name),
+        std.mem.span(user_display_name),
+        @ptrCast(alg_ids[0..alg_count]),
+        resident_key,
+    ) catch return CTAP2_ERR_CBOR;
+
+    const result_len = ctaphidTransactionWithCallback(&dev, cmd, result_buf[0..result_buf_len], keepalive_cb) catch |err| {
+        return switch (err) {
+            error.NoDeviceFound => CTAP2_ERR_NO_DEVICE,
+            error.Timeout => CTAP2_ERR_TIMEOUT,
+            error.WriteFailed => CTAP2_ERR_WRITE_FAILED,
+            error.ReadFailed => CTAP2_ERR_READ_FAILED,
+            error.BufferTooSmall => CTAP2_ERR_BUFFER_TOO_SMALL,
+            else => CTAP2_ERR_PROTOCOL,
+        };
+    };
+
+    return @intCast(result_len);
+}
+
+export fn ctap2_get_assertion_with_keepalive(
+    client_data_hash: [*]const u8,
+    rp_id: [*:0]const u8,
+    allow_list_ids: ?[*]const ?[*]const u8,
+    allow_list_id_lens: ?[*]const usize,
+    allow_list_count: usize,
+    keepalive_cb: KeepaliveCallback,
+    result_buf: [*]u8,
+    result_buf_len: usize,
+) callconv(.c) c_int {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    defer dev.close();
+
+    var cmd_buf: [2048]u8 = undefined;
+    const cmd = blk: {
+        if (allow_list_count > 0 and allow_list_ids != null and allow_list_id_lens != null) {
+            break :blk ctap2.encodeGetAssertion(
+                &cmd_buf,
+                client_data_hash[0..32],
+                std.mem.span(rp_id),
+                allow_list_ids.?[0..allow_list_count],
+                allow_list_id_lens.?[0..allow_list_count],
+            ) catch return CTAP2_ERR_CBOR;
+        } else {
+            break :blk ctap2.encodeGetAssertion(
+                &cmd_buf,
+                client_data_hash[0..32],
+                std.mem.span(rp_id),
+                &[_]?[*]const u8{},
+                &[_]usize{},
+            ) catch return CTAP2_ERR_CBOR;
+        }
+    };
+
+    const result_len = ctaphidTransactionWithCallback(&dev, cmd, result_buf[0..result_buf_len], keepalive_cb) catch |err| {
+        return switch (err) {
+            error.NoDeviceFound => CTAP2_ERR_NO_DEVICE,
+            error.Timeout => CTAP2_ERR_TIMEOUT,
+            error.WriteFailed => CTAP2_ERR_WRITE_FAILED,
+            error.ReadFailed => CTAP2_ERR_READ_FAILED,
+            error.BufferTooSmall => CTAP2_ERR_BUFFER_TOO_SMALL,
+            else => CTAP2_ERR_PROTOCOL,
+        };
+    };
+
+    return @intCast(result_len);
 }
