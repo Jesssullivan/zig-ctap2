@@ -1,0 +1,73 @@
+# zig-ctap2
+
+> Portable CTAP2/FIDO2 USB HID library in Zig with C FFI -- direct communication with security keys (YubiKey, SoloKeys), no Apple entitlements needed.
+
+## API
+
+16 exported C functions. All blocking with timeouts, all thread-safe. Header: `include/ctap2.h`.
+
+### Device Enumeration
+
+- `int ctap2_device_count(void)` -- Get number of connected FIDO2 devices.
+
+### Raw Response Functions
+
+- `int ctap2_make_credential(...)` -- Register a credential (raw CBOR response).
+- `int ctap2_get_assertion(...)` -- Authenticate (raw CBOR response).
+- `int ctap2_get_info(result_buf, result_buf_len)` -- Get device capabilities.
+
+### Parsed Response Functions
+
+- `int ctap2_make_credential_parsed(...)` -- Register + parse to credential_id, attestation_object.
+- `int ctap2_get_assertion_parsed(...)` -- Authenticate + parse to credential_id, auth_data, signature, user_handle.
+
+### Pure Parsing (no I/O)
+
+- `int ctap2_parse_make_credential_response(...)` -- Parse raw MakeCredential response.
+- `int ctap2_parse_get_assertion_response(...)` -- Parse raw GetAssertion response.
+
+### PIN Protocol
+
+- `int ctap2_get_pin_retries(int *out_retries)` -- Get remaining PIN retries.
+- `int ctap2_get_pin_token(pin, out_pin_token, out_pin_token_len)` -- Full ECDH handshake for PIN token.
+- `int ctap2_make_credential_with_pin(...)` -- PIN-authenticated registration.
+- `int ctap2_get_assertion_with_pin(...)` -- PIN-authenticated assertion.
+
+### Keepalive Callback Variants
+
+- `int ctap2_make_credential_with_keepalive(...)` -- Registration with keepalive callback.
+- `int ctap2_get_assertion_with_keepalive(...)` -- Assertion with keepalive callback.
+
+### Utilities
+
+- `const char *ctap2_status_message(uint8_t status)` -- Human-readable error message.
+- `int ctap2_debug_last_ioreturn(void)` -- Last IOKit return code (debug).
+
+## Error Codes
+
+- `0` = CTAP2_OK (success)
+- `-1` through `-10` = library errors (NO_DEVICE, TIMEOUT, PROTOCOL, BUFFER_TOO_SMALL, OPEN_FAILED, WRITE_FAILED, READ_FAILED, CBOR, DEVICE, PIN)
+- Positive values = CTAP2 device status byte (e.g. 0x27 = user denied, 0x31 = wrong PIN)
+
+## Integration
+
+```bash
+git submodule add https://github.com/Jesssullivan/zig-ctap2.git vendor/ctap2
+cd vendor/ctap2 && zig build -Doptimize=ReleaseFast
+```
+
+Link: `-lctap2 -framework IOKit -framework CoreFoundation` (macOS).
+Include: `#include "ctap2.h"`.
+macOS entitlement: `com.apple.security.device.usb`.
+
+## Source Files
+
+- `src/ffi.zig` -- C FFI exports (16 functions)
+- `src/ctap2.zig` -- CTAP2 command encoding and CBOR response parsing
+- `src/pin.zig` -- PIN protocol v2 (ECDH P-256, AES-256-CBC, HMAC-SHA-256)
+- `src/cbor.zig` -- Minimal CBOR encoder/decoder for CTAP2 subset
+- `src/ctaphid.zig` -- CTAPHID 64-byte packet framing
+- `src/hid.zig` -- Platform HID transport selector
+- `src/hid_macos.zig` -- macOS IOKit HID transport
+- `src/hid_linux.zig` -- Linux hidraw transport
+- `include/ctap2.h` -- C header
