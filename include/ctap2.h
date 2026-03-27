@@ -254,12 +254,12 @@ int ctap2_make_credential_with_keepalive(
 );
 
 int ctap2_get_assertion_with_keepalive(
-    const uint8_t *client_data_hash,
-    const char *rp_id,
+    const uint8_t *client_data_hash,     // 32 bytes
+    const char *rp_id,                    // null-terminated
     const uint8_t *const *allow_list_ids,
     const size_t *allow_list_id_lens,
     size_t allow_list_count,
-    ctap2_keepalive_callback_t keepalive_cb,
+    ctap2_keepalive_callback_t keepalive_cb,  // nullable
     uint8_t *result_buf,
     size_t result_buf_len
 );
