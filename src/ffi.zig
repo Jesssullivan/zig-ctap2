@@ -5,6 +5,7 @@
 /// Result data is written to caller-provided buffers.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const cbor = @import("cbor.zig");
 const ctaphid = @import("ctaphid.zig");
 const ctap2 = @import("ctap2.zig");
@@ -536,8 +537,12 @@ export fn ctap2_status_message(status: u8) callconv(.c) [*:0]const u8 {
 }
 
 /// Debug: return the last IOReturn error code from HID write.
+/// Returns -1 on non-macOS platforms (IOReturn is macOS-only).
 export fn ctap2_debug_last_ioreturn() callconv(.c) c_int {
-    return hid.platform.Device.last_ioreturn;
+    if (comptime builtin.os.tag == .macos) {
+        return hid.platform.Device.last_ioreturn;
+    }
+    return -1;
 }
 
 // ─── PIN Protocol Functions ─────────────────────────────────
