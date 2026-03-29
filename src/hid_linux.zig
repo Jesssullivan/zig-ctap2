@@ -104,10 +104,10 @@ fn isFidoDevice(path: []const u8) bool {
 
 /// Enumerate connected FIDO2 USB HID devices.
 pub fn enumerate(allocator: std.mem.Allocator) ![]Device {
-    var devices = std.ArrayList(Device).init(allocator);
+    var devices: std.ArrayList(Device) = .empty;
     errdefer {
         for (devices.items) |*dev| dev.close();
-        devices.deinit();
+        devices.deinit(allocator);
     }
 
     // Scan /dev/hidraw0 through /dev/hidraw15
@@ -122,10 +122,10 @@ pub fn enumerate(allocator: std.mem.Allocator) ![]Device {
 
         var dev = Device{ .fd = fd };
         @memcpy(dev.path[0..path.len], path);
-        try devices.append(dev);
+        try devices.append(allocator, dev);
     }
 
-    return try devices.toOwnedSlice();
+    return try devices.toOwnedSlice(allocator);
 }
 
 /// Find and open the first available FIDO2 device.
