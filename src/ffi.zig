@@ -23,6 +23,15 @@ const CTAP2_ERR_READ_FAILED: c_int = -7;
 const CTAP2_ERR_CBOR: c_int = -8;
 const CTAP2_ERR_DEVICE: c_int = -9;
 const CTAP2_ERR_PIN: c_int = -10;
+const CTAP2_ERR_NOT_ACCESSIBLE: c_int = -11;
+
+// Maximum output buffer sizes matching the documented C API contract.
+// Parsed response functions assume callers allocate at least these sizes.
+const MAX_CREDENTIAL_ID: usize = 1024;
+const MAX_ATTESTATION_OBJECT: usize = 4096;
+const MAX_AUTH_DATA: usize = 4096;
+const MAX_SIGNATURE: usize = 1024;
+const MAX_USER_HANDLE: usize = 1024;
 
 /// Keepalive callback type: receives status byte (1=processing, 2=user presence needed).
 pub const KeepaliveCallback = ?*const fn (u8) callconv(.c) void;
@@ -161,7 +170,10 @@ export fn ctap2_make_credential(
     const allocator = gpa.allocator();
 
     // Open first FIDO2 device
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     // Encode CTAP2 makeCredential command
@@ -209,7 +221,10 @@ export fn ctap2_get_assertion(
     const allocator = gpa.allocator();
 
     // Open first FIDO2 device
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     // Build allow list slices
@@ -253,7 +268,10 @@ export fn ctap2_get_info(
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     var cmd_buf: [8]u8 = undefined;
@@ -300,7 +318,10 @@ export fn ctap2_make_credential_parsed(
     const allocator = gpa.allocator();
 
     // Open first FIDO2 device
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     // Encode CTAP2 makeCredential command
@@ -337,13 +358,15 @@ export fn ctap2_make_credential_parsed(
         return @intCast(result.status);
     }
 
-    // Copy credential ID to output buffer
+    // Copy credential ID to output buffer (bounds-checked)
     const cred_id = result.credential_id;
+    if (cred_id.len > MAX_CREDENTIAL_ID) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_credential_id[0..cred_id.len], cred_id);
     out_credential_id_len.* = cred_id.len;
 
-    // Copy attestation object to output buffer
+    // Copy attestation object to output buffer (bounds-checked)
     const att_obj = result.attestation_object;
+    if (att_obj.len > MAX_ATTESTATION_OBJECT) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_attestation_object[0..att_obj.len], att_obj);
     out_attestation_object_len.* = att_obj.len;
 
@@ -377,7 +400,10 @@ export fn ctap2_get_assertion_parsed(
     const allocator = gpa.allocator();
 
     // Open first FIDO2 device
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     // Build allow list slices
@@ -426,20 +452,24 @@ export fn ctap2_get_assertion_parsed(
         return @intCast(result.status);
     }
 
-    // Copy outputs
+    // Copy outputs (bounds-checked against documented buffer sizes)
     const cred_id = result.credential_id;
+    if (cred_id.len > MAX_CREDENTIAL_ID) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_credential_id[0..cred_id.len], cred_id);
     out_credential_id_len.* = cred_id.len;
 
     const auth_data = result.auth_data;
+    if (auth_data.len > MAX_AUTH_DATA) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_auth_data[0..auth_data.len], auth_data);
     out_auth_data_len.* = auth_data.len;
 
     const sig = result.signature;
+    if (sig.len > MAX_SIGNATURE) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_signature[0..sig.len], sig);
     out_signature_len.* = sig.len;
 
     const user_handle = result.user_handle;
+    if (user_handle.len > MAX_USER_HANDLE) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_user_handle[0..user_handle.len], user_handle);
     out_user_handle_len.* = user_handle.len;
 
@@ -467,10 +497,12 @@ export fn ctap2_parse_make_credential_response(
     }
 
     const cred_id = result.credential_id;
+    if (cred_id.len > MAX_CREDENTIAL_ID) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_credential_id[0..cred_id.len], cred_id);
     out_credential_id_len.* = cred_id.len;
 
     const att_obj = result.attestation_object;
+    if (att_obj.len > MAX_ATTESTATION_OBJECT) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_attestation_object[0..att_obj.len], att_obj);
     out_attestation_object_len.* = att_obj.len;
 
@@ -512,18 +544,22 @@ export fn ctap2_parse_get_assertion_response(
     }
 
     const cred_id = result.credential_id;
+    if (cred_id.len > MAX_CREDENTIAL_ID) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_credential_id[0..cred_id.len], cred_id);
     out_credential_id_len.* = cred_id.len;
 
     const auth_data = result.auth_data;
+    if (auth_data.len > MAX_AUTH_DATA) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_auth_data[0..auth_data.len], auth_data);
     out_auth_data_len.* = auth_data.len;
 
     const sig = result.signature;
+    if (sig.len > MAX_SIGNATURE) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_signature[0..sig.len], sig);
     out_signature_len.* = sig.len;
 
     const user_handle = result.user_handle;
+    if (user_handle.len > MAX_USER_HANDLE) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_user_handle[0..user_handle.len], user_handle);
     out_user_handle_len.* = user_handle.len;
 
@@ -557,7 +593,10 @@ export fn ctap2_get_pin_retries(
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     // Encode getPINRetries command
@@ -607,7 +646,10 @@ export fn ctap2_get_pin_token(
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     // Step 1: getKeyAgreement — get authenticator's ECDH public key
@@ -703,7 +745,10 @@ export fn ctap2_make_credential_with_pin(
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     var cmd_buf: [2048]u8 = undefined;
@@ -752,10 +797,12 @@ export fn ctap2_make_credential_with_pin(
     }
 
     const cred_id = result.credential_id;
+    if (cred_id.len > MAX_CREDENTIAL_ID) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_credential_id[0..cred_id.len], cred_id);
     out_credential_id_len.* = cred_id.len;
 
     const att_obj = result.attestation_object;
+    if (att_obj.len > MAX_ATTESTATION_OBJECT) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_attestation_object[0..att_obj.len], att_obj);
     out_attestation_object_len.* = att_obj.len;
 
@@ -790,7 +837,10 @@ export fn ctap2_get_assertion_with_pin(
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     // Build allow list slices
@@ -846,18 +896,22 @@ export fn ctap2_get_assertion_with_pin(
     }
 
     const cred_id = result.credential_id;
+    if (cred_id.len > MAX_CREDENTIAL_ID) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_credential_id[0..cred_id.len], cred_id);
     out_credential_id_len.* = cred_id.len;
 
     const auth_data = result.auth_data;
+    if (auth_data.len > MAX_AUTH_DATA) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_auth_data[0..auth_data.len], auth_data);
     out_auth_data_len.* = auth_data.len;
 
     const sig = result.signature;
+    if (sig.len > MAX_SIGNATURE) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_signature[0..sig.len], sig);
     out_signature_len.* = sig.len;
 
     const user_handle = result.user_handle;
+    if (user_handle.len > MAX_USER_HANDLE) return CTAP2_ERR_BUFFER_TOO_SMALL;
     @memcpy(out_user_handle[0..user_handle.len], user_handle);
     out_user_handle_len.* = user_handle.len;
 
@@ -888,7 +942,10 @@ export fn ctap2_make_credential_with_keepalive(
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     var cmd_buf: [2048]u8 = undefined;
@@ -932,7 +989,10 @@ export fn ctap2_get_assertion_with_keepalive(
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var dev = hid.openFirst(allocator) catch return CTAP2_ERR_NO_DEVICE;
+    var dev = hid.openFirst(allocator) catch |err| return switch (err) {
+        error.DevicesNotAccessible => CTAP2_ERR_NOT_ACCESSIBLE,
+        else => CTAP2_ERR_NO_DEVICE,
+    };
     defer dev.close();
 
     // Build allow list slices (same pattern as ctap2_get_assertion)
