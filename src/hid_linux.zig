@@ -9,6 +9,7 @@ const posix = std.posix;
 
 pub const Error = error{
     NoDeviceFound,
+    DevicesNotAccessible,
     OpenFailed,
     WriteFailed,
     ReadFailed,
@@ -87,22 +88,29 @@ fn isFidoDevice(path: []const u8) bool {
         const item_type = (item >> 2) & 0x03;
         const item_tag = (item >> 4) & 0x0F;
 
+        // Per HID spec: size field 3 means 4 data bytes
+        const data_bytes: usize = if (item_size == 3) 4 else item_size;
+
+        // Bounds check: ensure data bytes are within descriptor
+        if (i + 1 + data_bytes > desc.len) break;
+
         if (item_type == 1 and item_tag == 0 and item_size == 2) {
             // Usage Page (2 bytes)
-            if (i + 2 < desc.len) {
-                const page = @as(u16, desc[i + 1]) | (@as(u16, desc[i + 2]) << 8);
-                if (page == FIDO_USAGE_PAGE) return true;
-            }
+            const page = @as(u16, desc[i + 1]) | (@as(u16, desc[i + 2]) << 8);
+            if (page == FIDO_USAGE_PAGE) return true;
         }
 
         // Advance past this item
-        i += 1 + @as(usize, if (item_size == 3) 4 else item_size);
+        i += 1 + data_bytes;
     }
 
     return false;
 }
 
 /// Enumerate connected FIDO2 USB HID devices.
+/// Scans /sys/class/hidraw/ to discover all hidraw devices (not limited
+/// to a fixed range). Returns DevicesNotAccessible if FIDO devices are
+/// found but none could be opened (likely a permissions issue).
 pub fn enumerate(allocator: std.mem.Allocator) ![]Device {
     var devices: std.ArrayList(Device) = .empty;
     errdefer {
@@ -110,9 +118,56 @@ pub fn enumerate(allocator: std.mem.Allocator) ![]Device {
         devices.deinit(allocator);
     }
 
-    // Scan /dev/hidraw0 through /dev/hidraw15
-    var idx: u8 = 0;
-    while (idx < 16) : (idx += 1) {
+    // Scan /sys/class/hidraw/ for actual device entries
+    var fido_found: usize = 0;
+    var open_failed: usize = 0;
+    const sysfs_dir = std.fs.openDirAbsolute("/sys/class/hidraw", .{ .iterate = true }) catch {
+        // Fallback: scan /dev/hidraw0..255 if sysfs is unavailable
+        return enumerateFallback(allocator);
+    };
+    // sysfs_dir is const, close via a mutable copy after iteration
+    var dir = sysfs_dir;
+    defer dir.close();
+    var iter = dir.iterate();
+
+    while (iter.next() catch null) |entry| {
+        if (!std.mem.startsWith(u8, entry.name, "hidraw")) continue;
+
+        var path_buf: [64]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buf, "/dev/{s}", .{entry.name}) catch continue;
+
+        if (!isFidoDevice(path)) continue;
+        fido_found += 1;
+
+        const fd = posix.open(path, .{ .ACCMODE = .RDWR }, 0) catch {
+            open_failed += 1;
+            continue;
+        };
+
+        var dev = Device{ .fd = fd };
+        @memcpy(dev.path[0..path.len], path);
+        try devices.append(allocator, dev);
+    }
+
+    // Distinguish "no FIDO devices" from "found but can't open" (permissions)
+    if (devices.items.len == 0 and fido_found > 0 and open_failed == fido_found) {
+        return Error.DevicesNotAccessible;
+    }
+
+    return try devices.toOwnedSlice(allocator);
+}
+
+/// Fallback enumeration when /sys/class/hidraw is not available.
+/// Scans /dev/hidraw0 through /dev/hidraw255.
+fn enumerateFallback(allocator: std.mem.Allocator) ![]Device {
+    var devices: std.ArrayList(Device) = .empty;
+    errdefer {
+        for (devices.items) |*dev| dev.close();
+        devices.deinit(allocator);
+    }
+
+    var idx: u16 = 0;
+    while (idx < 256) : (idx += 1) {
         var path_buf: [32]u8 = undefined;
         const path = std.fmt.bufPrint(&path_buf, "/dev/hidraw{d}", .{idx}) catch continue;
 

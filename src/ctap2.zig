@@ -265,6 +265,8 @@ pub fn parseMakeCredentialResponse(response_data: []const u8) cbor.Error!MakeCre
     if (auth_data.len < 55) return cbor.Error.Truncated;
 
     const cred_id_len = @as(usize, auth_data[53]) << 8 | @as(usize, auth_data[54]);
+    // CTAP2 credential IDs are typically 16-256 bytes; reject implausible sizes
+    if (cred_id_len > 1024) return cbor.Error.InvalidCbor;
     if (auth_data.len < 55 + cred_id_len) return cbor.Error.Truncated;
 
     const credential_id = auth_data[55..][0..cred_id_len];

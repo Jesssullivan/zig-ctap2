@@ -27,6 +27,7 @@ extern "C" {
 #define CTAP2_ERR_CBOR             -8
 #define CTAP2_ERR_DEVICE           -9
 #define CTAP2_ERR_PIN             -10
+#define CTAP2_ERR_NOT_ACCESSIBLE  -11  // FIDO devices found but not openable (permissions)
 
 // Get the number of connected FIDO2 devices.
 int ctap2_device_count(void);
