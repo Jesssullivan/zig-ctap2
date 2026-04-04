@@ -14,6 +14,7 @@ const c = @cImport({
 
 pub const Error = error{
     NoDeviceFound,
+    DevicesNotAccessible,
     OpenFailed,
     WriteFailed,
     ReadFailed,
