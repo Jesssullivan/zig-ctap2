@@ -1,0 +1,50 @@
+# zig-ctap2
+
+> Portable CTAP2/FIDO2 library in Zig -- direct USB HID communication with security keys (YubiKey, SoloKeys, etc.), no Apple entitlements or platform authentication frameworks needed.
+
+Part of the [Tinyland Zig Libraries](https://libs.tinyland.dev).
+
+## Installation
+
+```
+zig fetch --save git+https://github.com/Jesssullivan/zig-ctap2.git
+```
+
+## Full Documentation
+
+- [API reference](https://libs.tinyland.dev/api/zig-ctap2/): Zig autodoc
+- [llms-full.txt](https://raw.githubusercontent.com/Jesssullivan/zig-ctap2/main/llms-full.txt): Complete API dump for LLMs
+- [AGENTS.md](https://github.com/Jesssullivan/zig-ctap2/blob/main/AGENTS.md): Agent instructions
+
+## C API (17 functions)
+
+- `ctap2_device_count()`: Enumerate connected FIDO2 devices
+- `ctap2_get_info(buf, len)`: Query device capabilities (authenticatorGetInfo)
+- `ctap2_make_credential(...)`: Register a credential (raw CBOR response)
+- `ctap2_get_assertion(...)`: Authenticate with a credential (raw CBOR response)
+- `ctap2_make_credential_parsed(...)`: Register + parse (credential_id, attestation_object)
+- `ctap2_get_assertion_parsed(...)`: Authenticate + parse (credential_id, auth_data, signature, user_handle)
+- `ctap2_parse_make_credential_response(...)`: Parse raw MakeCredential response (no I/O)
+- `ctap2_parse_get_assertion_response(...)`: Parse raw GetAssertion response (no I/O)
+- `ctap2_get_pin_retries(retries)`: Get remaining PIN retry count
+- `ctap2_get_pin_token(pin, token, len)`: Full PIN protocol v2 handshake (ECDH + AES)
+- `ctap2_make_credential_with_pin(...)`: PIN-authenticated registration
+- `ctap2_get_assertion_with_pin(...)`: PIN-authenticated assertion
+- `ctap2_make_credential_with_keepalive(...)`: Registration with keepalive callback
+- `ctap2_get_assertion_with_keepalive(...)`: Assertion with keepalive callback
+- `ctap2_status_message(status)`: Map status byte to error string
+- `ctap2_debug_last_ioreturn()`: Last IOKit error code (macOS debug)
+
+## Build
+
+```
+zig build                    # build static library
+zig build test               # run unit tests
+zig build test-pbt           # property-based tests
+zig build docs               # generate API docs
+```
+
+## Platform Support
+
+- macOS (arm64, x86_64) -- IOKit + CoreFoundation
+- Linux (arm64, x86_64) -- hidraw

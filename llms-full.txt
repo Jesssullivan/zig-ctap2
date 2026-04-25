@@ -1,0 +1,217 @@
+# zig-ctap2 -- Complete API Reference
+
+> Portable CTAP2/FIDO2 library in Zig -- direct USB HID communication with security keys (YubiKey, SoloKeys, etc.), no Apple entitlements or platform authentication frameworks needed.
+
+Part of the [Tinyland Zig Libraries](https://libs.tinyland.dev). License: Zlib OR MIT.
+
+## Installation
+
+```
+zig fetch --save git+https://github.com/Jesssullivan/zig-ctap2.git
+```
+
+Then in build.zig:
+
+```zig
+const dep = b.dependency("zig-ctap2", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("zig-ctap2", dep.module("zig-ctap2"));
+```
+
+Or as a git submodule for C FFI consumers:
+
+```
+git submodule add https://github.com/Jesssullivan/zig-ctap2.git vendor/ctap2
+cd vendor/ctap2 && zig build -Doptimize=ReleaseFast
+```
+
+Link `-lctap2`. Include `#include "ctap2.h"`.
+macOS: also link `-framework IOKit -framework CoreFoundation`.
+
+## Source Structure
+
+- `src/ffi.zig` - C FFI exports (17 functions)
+- `src/cbor.zig` - Minimal CBOR encoder/decoder for CTAP2 subset
+- `src/ctap2.zig` - CTAP2 command encoding and response parsing
+- `src/ctaphid.zig` - CTAPHID transport framing (64-byte USB HID packets)
+- `src/pin.zig` - CTAP2 Client PIN protocol v2 (ECDH P-256 + AES-256-CBC + HMAC-SHA-256)
+- `src/hid.zig` - Platform-selected USB HID transport
+- `src/hid_macos.zig` - macOS USB HID via IOKit
+- `src/hid_linux.zig` - Linux USB HID via hidraw
+- `include/ctap2.h` - C header (17 functions + error codes)
+- `tests/pbt_*.zig` - Property-based tests (1000-iteration roundtrips)
+- `tests/hardware_test.zig` - Hardware integration tests (YubiKey)
+- `examples/get_info.c` - C usage example
+
+## C API Reference (ctap2.h)
+
+All functions are blocking (with timeouts) and thread-safe. Buffers are caller-provided.
+
+### Error Codes
+
+- `CTAP2_OK` (0): Success
+- `CTAP2_ERR_NO_DEVICE` (-1): No FIDO2 device connected
+- `CTAP2_ERR_TIMEOUT` (-2): Device communication timeout
+- `CTAP2_ERR_PROTOCOL` (-3): CTAPHID protocol error
+- `CTAP2_ERR_BUFFER_TOO_SMALL` (-4): Output buffer too small
+- `CTAP2_ERR_OPEN_FAILED` (-5): Failed to open HID device
+- `CTAP2_ERR_WRITE_FAILED` (-6): USB write failed
+- `CTAP2_ERR_READ_FAILED` (-7): USB read failed
+- `CTAP2_ERR_CBOR` (-8): CBOR encoding/decoding error
+- `CTAP2_ERR_DEVICE` (-9): CTAP2 device error
+- `CTAP2_ERR_PIN` (-10): PIN protocol error
+- `CTAP2_ERR_NOT_ACCESSIBLE` (-11): Devices found but not openable (permissions)
+
+Return value convention: negative = library error, 0 = success, positive = CTAP2 device status byte (e.g. 0x27 = user denied, 0x31 = wrong PIN).
+
+### Device Enumeration
+
+- `int ctap2_device_count(void)`: Get the number of connected FIDO2 USB HID devices. Returns count (0 if none).
+
+### Raw Response Functions
+
+These return the raw CTAP2 response (status byte + CBOR) in result_buf. The caller is responsible for parsing the CBOR response.
+
+- `int ctap2_make_credential(const uint8_t *client_data_hash, const char *rp_id, const char *rp_name, const uint8_t *user_id, size_t user_id_len, const char *user_name, const char *user_display_name, const int32_t *alg_ids, size_t alg_count, bool resident_key, uint8_t *result_buf, size_t result_buf_len)`: Perform authenticatorMakeCredential. client_data_hash must be 32 bytes (SHA-256 of clientDataJSON). Returns bytes written to result_buf, or negative error code.
+
+- `int ctap2_get_assertion(const uint8_t *client_data_hash, const char *rp_id, const uint8_t *const *allow_list_ids, const size_t *allow_list_id_lens, size_t allow_list_count, uint8_t *result_buf, size_t result_buf_len)`: Perform authenticatorGetAssertion. Returns bytes written to result_buf, or negative error code.
+
+- `int ctap2_get_info(uint8_t *result_buf, size_t result_buf_len)`: Perform authenticatorGetInfo. Returns bytes written to result_buf, or negative error code.
+
+### Parsed Response Functions
+
+These perform the CTAP2 command AND parse the CBOR, returning structured fields.
+
+- `int ctap2_make_credential_parsed(const uint8_t *client_data_hash, const char *rp_id, const char *rp_name, const uint8_t *user_id, size_t user_id_len, const char *user_name, const char *user_display_name, const int32_t *alg_ids, size_t alg_count, bool resident_key, uint8_t *out_credential_id, size_t *out_credential_id_len, uint8_t *out_attestation_object, size_t *out_attestation_object_len)`: Combined send + parse. Output buffers: credential_id >= 1024 bytes, attestation_object >= 4096 bytes.
+
+- `int ctap2_get_assertion_parsed(const uint8_t *client_data_hash, const char *rp_id, const uint8_t *const *allow_list_ids, const size_t *allow_list_id_lens, size_t allow_list_count, uint8_t *out_credential_id, size_t *out_credential_id_len, uint8_t *out_auth_data, size_t *out_auth_data_len, uint8_t *out_signature, size_t *out_signature_len, uint8_t *out_user_handle, size_t *out_user_handle_len)`: Combined send + parse. Output buffers >= 1024 bytes each. allow_list_ids/lens can be NULL when count is 0.
+
+### Pure Parsing Functions (no I/O)
+
+- `int ctap2_parse_make_credential_response(const uint8_t *response_data, size_t response_len, uint8_t *out_credential_id, size_t *out_credential_id_len, uint8_t *out_attestation_object, size_t *out_attestation_object_len)`: Parse a raw MakeCredential response (status byte + CBOR attestation object).
+
+- `int ctap2_parse_get_assertion_response(const uint8_t *response_data, size_t response_len, const uint8_t *fallback_cred_id, size_t fallback_cred_id_len, uint8_t *out_credential_id, size_t *out_credential_id_len, uint8_t *out_auth_data, size_t *out_auth_data_len, uint8_t *out_signature, size_t *out_signature_len, uint8_t *out_user_handle, size_t *out_user_handle_len)`: Parse a raw GetAssertion response. fallback_cred_id: credential ID to use when response omits key 1 (CTAP2 spec: single-entry allowList). Pass NULL/0 if no fallback.
+
+### PIN Protocol Functions
+
+- `int ctap2_get_pin_retries(int *out_retries)`: Get PIN retry count. out_retries receives remaining retries.
+
+- `int ctap2_get_pin_token(const char *pin, uint8_t *out_pin_token, size_t out_pin_token_len)`: Full PIN protocol v2 handshake: getKeyAgreement, ECDH P-256, AES-256-CBC PIN encryption, getPinUvAuthTokenUsingPinWithPermissions. pin: null-terminated UTF-8. out_pin_token: 32 bytes. out_pin_token_len: must be >= 32.
+
+### PIN-Authenticated Functions
+
+- `int ctap2_make_credential_with_pin(const uint8_t *client_data_hash, const char *rp_id, const char *rp_name, const uint8_t *user_id, size_t user_id_len, const char *user_name, const char *user_display_name, const int32_t *alg_ids, size_t alg_count, bool resident_key, const uint8_t *pin_token, uint8_t pin_protocol, uint8_t *out_credential_id, size_t *out_credential_id_len, uint8_t *out_attestation_object, size_t *out_attestation_object_len)`: PIN-authenticated registration. pin_token=NULL/pin_protocol=0 for no PIN. pin_token=<32 bytes>/pin_protocol=2 for PIN auth.
+
+- `int ctap2_get_assertion_with_pin(const uint8_t *client_data_hash, const char *rp_id, const uint8_t *const *allow_list_ids, const size_t *allow_list_id_lens, size_t allow_list_count, const uint8_t *pin_token, uint8_t pin_protocol, uint8_t *out_credential_id, size_t *out_credential_id_len, uint8_t *out_auth_data, size_t *out_auth_data_len, uint8_t *out_signature, size_t *out_signature_len, uint8_t *out_user_handle, size_t *out_user_handle_len)`: PIN-authenticated assertion.
+
+### Keepalive Callback Functions
+
+- `typedef void (*ctap2_keepalive_callback_t)(uint8_t status)`: Callback type. Status: 1=processing, 2=user presence needed.
+
+- `int ctap2_make_credential_with_keepalive(const uint8_t *client_data_hash, const char *rp_id, const char *rp_name, const uint8_t *user_id, size_t user_id_len, const char *user_name, const char *user_display_name, const int32_t *alg_ids, size_t alg_count, bool resident_key, ctap2_keepalive_callback_t keepalive_cb, uint8_t *result_buf, size_t result_buf_len)`: MakeCredential with keepalive callback. Returns raw response bytes.
+
+- `int ctap2_get_assertion_with_keepalive(const uint8_t *client_data_hash, const char *rp_id, const uint8_t *const *allow_list_ids, const size_t *allow_list_id_lens, size_t allow_list_count, ctap2_keepalive_callback_t keepalive_cb, uint8_t *result_buf, size_t result_buf_len)`: GetAssertion with keepalive callback. Returns raw response bytes.
+
+### Utility Functions
+
+- `const char *ctap2_status_message(uint8_t status)`: Map a CTAP2 status byte to a human-readable error message. Returns static string.
+
+- `int ctap2_debug_last_ioreturn(void)`: Last IOReturn error code from HID write (macOS only). Returns -1 on other platforms.
+
+## Zig API Reference
+
+### cbor.zig
+- `Value` (union): Decoded CBOR value (uint, neg_int, byte_string, text_string, array, map, boolean, null_val).
+- `MapEntry` (struct): key/value pair for CBOR maps.
+- `Encoder` (struct): Streaming CBOR encoder into a fixed buffer.
+  - `init(buf) -> Encoder`
+  - `written() -> []const u8`
+  - `encodeUint(value)`: Encode an unsigned integer.
+  - `encodeNegInt(n)`: Encode a negative integer (CBOR stores as -1 - n).
+  - `encodeByteString(data)`: Encode a byte string.
+  - `encodeTextString(text)`: Encode a text string.
+  - `beginArray(count)`: Begin an array of known length.
+  - `beginMap(count)`: Begin a map of known length.
+  - `encodeBool(value)`: Encode a boolean.
+  - `encodeNull()`: Encode null.
+- `Decoder` (struct): Streaming CBOR decoder from a byte slice.
+  - `init(data) -> Decoder`
+  - `remaining() -> usize`
+  - `decodeUint() -> !u64`: Decode an unsigned integer.
+  - `decodeByteString() -> ![]const u8`: Decode a byte string (slice into source).
+  - `decodeTextString() -> ![]const u8`: Decode a text string (slice into source).
+  - `decodeArrayHeader() -> !usize`: Decode array header, return element count.
+  - `decodeMapHeader() -> !usize`: Decode map header, return entry count.
+  - `peekMajorType() -> !u3`: Peek at major type without consuming.
+  - `skipValue()`: Skip a CBOR value including nested structures.
+  - `decodeRawHeader() -> !Header`: Raw major type + argument.
+
+### ctap2.zig
+- `CommandCode` (enum): CTAP2 command codes (make_credential=0x01, get_assertion=0x02, get_info=0x04, client_pin=0x06).
+- `StatusCode` (enum): CTAP2 status codes with human-readable names.
+- `MakeCredentialResult` (struct): Parsed result with status, credential_id, attestation_object (slices into response buffer).
+- `GetAssertionResult` (struct): Parsed result with status, credential_id, auth_data, signature, user_handle.
+- `statusMessage(status: u8) -> [*:0]const u8`: Map status byte to message string.
+- `encodeMakeCredential(buf, client_data_hash, rp_id, rp_name, user_id, user_name, user_display_name, alg_ids, resident_key) -> ![]const u8`: Encode makeCredential CBOR command.
+- `encodeGetAssertion(buf, rp_id, client_data_hash, allow_list) -> ![]const u8`: Encode getAssertion CBOR command.
+- `encodeGetInfo(buf) -> ![]const u8`: Encode getInfo command.
+- `parseMakeCredentialResponse(response) -> !MakeCredentialResult`: Parse response (status byte + CBOR map with keys: 1=fmt, 2=authData, 3=attStmt). Extracts credential ID from authData.
+- `parseGetAssertionResponse(response, fallback_cred_id) -> !GetAssertionResult`: Parse response (status byte + CBOR map with keys: 1=credential, 2=authData, 3=signature, 4=user). Key 1 omitted for single-entry allowList per spec.
+
+### ctaphid.zig
+- `Command` (enum): CTAPHID commands (init=0x06, cbor=0x10, keepalive=0x3b, error_=0x3f, ...).
+- `KeepaliveStatus` (enum): processing=1, upneeded=2.
+- `InitHeader` (struct): Parsed init packet header (cid, cmd, payload_len).
+- `InitResponse` (struct): Parsed CTAPHID_INIT response (cid, protocol_version, capabilities).
+- `buildInitPacket(cid, cmd, len, data) -> Packet`: Build a 64-byte init packet.
+- `buildContPacket(cid, seq, data) -> Packet`: Build a 64-byte continuation packet.
+- `fragmentMessage(cid, cmd, payload, out) -> !usize`: Fragment message into packets.
+- `parseInitPacket(pkt) -> !InitHeader`: Parse init packet header.
+- `reassembleMessage(init_pkt, read_fn, buf) -> !usize`: Reassemble from init + continuation packets.
+- `parseInitResponse(data) -> !InitResponse`: Parse CTAPHID_INIT response.
+
+### hid.zig / hid_macos.zig / hid_linux.zig
+- `Device` (struct): Platform HID device handle.
+  - `write(pkt) -> !void`: Write a 64-byte packet.
+  - `read(timeout_ms) -> !Packet`: Read a 64-byte packet with timeout.
+  - `close()`: Close the device.
+- `enumerate(allocator) -> ![]Device`: Enumerate connected FIDO2 USB HID devices.
+- `openFirst(allocator) -> !Device`: Find and open the first available FIDO2 device.
+
+### pin.zig
+- `SubCommand` (enum): PIN protocol sub-commands (getPINRetries=0x01, getKeyAgreement=0x02, ...).
+- `PINRetriesResult` (struct): retries count.
+- `CoseKey` (struct): ECDH P-256 public key in COSE format (x: [32]u8, y: [32]u8).
+- `EphemeralKeyPair` (struct): private_key + public_key for ECDH.
+- `SharedSecret` (struct): 32-byte SHA-256(ECDH shared point x-coordinate).
+- `PINTokenResult` (struct): Decrypted 32-byte PIN token.
+- `generateKeyPair() -> EphemeralKeyPair`: Generate ECDH P-256 ephemeral key pair.
+- `deriveSharedSecret(private, peer_key) -> !SharedSecret`: ECDH shared secret derivation.
+- `computeHmac(key, message) -> [32]u8`: HMAC-SHA-256.
+- `computePinAuth(pin_token, message) -> [16]u8`: First 16 bytes of HMAC-SHA-256(pinToken, message).
+- `aes256CbcEncrypt(key, data) -> ![N]u8`: AES-256-CBC encrypt (zero IV, per CTAP2 spec).
+- `aes256CbcDecrypt(key, data) -> ![N]u8`: AES-256-CBC decrypt (zero IV, per CTAP2 spec).
+- `encodeGetPINRetries(buf) -> ![]const u8`: Encode getPINRetries request.
+- `encodeGetKeyAgreement(buf) -> ![]const u8`: Encode getKeyAgreement request.
+- `encodeGetPINToken(buf, our_pub, pin_hash_enc) -> ![]const u8`: Encode getPinUvAuthTokenUsingPinWithPermissions.
+- `parsePINRetriesResponse(data) -> !PINRetriesResult`: Parse getPINRetries response.
+- `parseKeyAgreementResponse(data) -> !CoseKey`: Parse getKeyAgreement response (COSE_Key).
+- `parsePINTokenResponse(data, shared_secret) -> !PINTokenResult`: Parse and decrypt PIN token.
+- `encryptPINHash(pin, shared_secret) -> ![64]u8`: SHA-256(PIN)[0:16], pad to 64, AES-256-CBC encrypt.
+- `encodeMakeCredentialWithPIN(buf, ..., pin_token) -> ![]const u8`: makeCredential + pinAuth/pinUvAuthProtocol.
+- `encodeGetAssertionWithPIN(buf, ..., pin_token) -> ![]const u8`: getAssertion + pinAuth/pinUvAuthProtocol.
+
+## Build
+
+```
+zig build                        # static library
+zig build -Doptimize=ReleaseFast # optimized build
+zig build test                   # unit tests (no hardware)
+zig build test-pbt               # property-based tests (1000 iterations)
+zig build test-hardware          # hardware tests (needs YubiKey + YUBIKEY_TESTS=1)
+zig build docs                   # generate API docs
+```
+
+## Platform Support
+
+- macOS (arm64, x86_64) -- IOKit + CoreFoundation. Requires `com.apple.security.device.usb` entitlement and Input Monitoring permission.
+- Linux (arm64, x86_64) -- hidraw kernel support. Requires read/write access to `/dev/hidraw*`.

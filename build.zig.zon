@@ -1,0 +1,16 @@
+.{
+    .name = .zig_ctap2,
+    .version = "0.4.0",
+    .fingerprint = 0x6bdb9d0bc4e1aa2a,
+    .minimum_zig_version = "0.14.1",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "include",
+        "tests",
+        "LICENSE",
+        "README.md",
+    },
+}
