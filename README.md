@@ -21,9 +21,35 @@ Apple's `ASAuthorizationController` requires a restricted entitlement + provisio
 
 ## Requirements
 
-- Zig 0.15.2+
+- Zig 0.14.1+
 - macOS 13+ (IOKit) or Linux (hidraw)
 - USB security key (tested with YubiKey 5C NFC)
+
+## Installation
+
+### Zig Package Manager (recommended)
+
+```bash
+zig fetch --save git+https://github.com/Jesssullivan/zig-ctap2.git
+```
+
+Then in your `build.zig`:
+
+```zig
+const dep = b.dependency("zig-ctap2", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("zig-ctap2", dep.module("zig-ctap2"));
+```
+
+### Git Submodule (C FFI consumers)
+
+```bash
+git submodule add https://github.com/Jesssullivan/zig-ctap2.git vendor/ctap2
+cd vendor/ctap2 && zig build -Doptimize=ReleaseFast
+```
+
+Link `-lctap2` and include `ctap2.h`. At final link time, add platform frameworks:
+- **macOS:** `-framework IOKit -framework CoreFoundation`
+- **Linux:** no extra libraries needed (uses hidraw via kernel)
 
 ## Build
 

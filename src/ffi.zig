@@ -3,7 +3,6 @@
 /// These functions are called from Swift via the bridging header.
 /// All functions are blocking (with timeouts) and thread-safe.
 /// Result data is written to caller-provided buffers.
-
 const std = @import("std");
 const builtin = @import("builtin");
 const cbor = @import("cbor.zig");
@@ -923,6 +922,10 @@ export fn ctap2_get_assertion_with_pin(
 // a keepalive callback invoked when the device is waiting for
 // user presence (touch). Status byte: 1=processing, 2=upneeded.
 
+/// Perform authenticatorMakeCredential with a keepalive callback.
+/// The callback is invoked when the device sends CTAPHID_KEEPALIVE
+/// (status 1 = processing, 2 = user presence needed).
+/// Returns bytes written to result_buf, or negative error code.
 export fn ctap2_make_credential_with_keepalive(
     client_data_hash: [*]const u8,
     rp_id: [*:0]const u8,
@@ -975,6 +978,10 @@ export fn ctap2_make_credential_with_keepalive(
     return @intCast(result_len);
 }
 
+/// Perform authenticatorGetAssertion with a keepalive callback.
+/// The callback is invoked when the device sends CTAPHID_KEEPALIVE
+/// (status 1 = processing, 2 = user presence needed).
+/// Returns bytes written to result_buf, or negative error code.
 export fn ctap2_get_assertion_with_keepalive(
     client_data_hash: [*]const u8,
     rp_id: [*:0]const u8,
