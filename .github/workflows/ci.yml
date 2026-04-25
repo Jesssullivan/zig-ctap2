@@ -32,6 +32,27 @@ jobs:
       - name: Run property-based tests
         run: zig build test-pbt
 
+  autodoc:
+    name: Autodoc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+          use-cache: false
+
+      - name: Generate autodoc
+        run: zig build docs
+
+      - name: Upload autodoc artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autodoc
+          path: zig-out/docs/
+
   secrets-scan:
     name: Secrets scan
     runs-on: ubuntu-latest
