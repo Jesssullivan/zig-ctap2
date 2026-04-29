@@ -1,12 +1,14 @@
 # zig-ctap2
 
-Portable CTAP2/FIDO2 library in Zig -- direct USB HID communication with security keys (YubiKey, SoloKeys, etc.), no Apple entitlements or platform authentication frameworks needed.
+Portable CTAP2/FIDO2 USB HID library in Zig with a stable C ABI for native applications on macOS and Linux.
 
 **License:** Zlib OR MIT
 
 ## Why
 
-Apple's `ASAuthorizationController` requires a restricted entitlement + provisioning profile for WebAuthn in general-purpose browsers. This library talks directly to FIDO2 devices over USB HID via IOKit (macOS) and hidraw (Linux), bypassing platform authentication frameworks entirely.
+zig-ctap2 provides a small FFI boundary for CTAP2 over USB HID: device enumeration, makeCredential, getAssertion, getInfo, PIN protocol v2, keepalive callbacks, and raw-response parsing. It is useful when a native app needs portable external-authenticator operations without binding all credential logic to one OS application framework.
+
+It does not replace SwiftUI, AppKit, UIKit, Cocoa, AuthenticationServices UI, passkeys/iCloud Keychain, platform authenticators, browser WebAuthn policy, Secure Enclave, LocalAuthentication, biometric prompts, attestation policy validation, origin/RP policy, account sync, or application UI lifecycle.
 
 ## Features
 
@@ -15,7 +17,8 @@ Apple's `ASAuthorizationController` requires a restricted entitlement + provisio
 - **CTAPHID framing**: 64-byte packet fragmentation/reassembly, CID management, keepalive handling
 - **Minimal CBOR codec**: encoder/decoder for the CTAP2 subset (integers, byte/text strings, arrays, maps, booleans)
 - **Platform HID transports**: macOS (IOKit), Linux (hidraw)
-- **C FFI**: 16+ exported functions callable from Swift, C, C++, or any language with C interop
+- **C FFI**: 16 exported functions callable from Swift, C, C++, or any language with C interop
+- **Zig package API**: Direct Zig imports use `src/root.zig`; C ABI exports stay in `src/ffi.zig`
 - **Error mapping**: All CTAP2 status codes mapped to human-readable messages
 - **Property-based tests**: 1000-iteration roundtrip tests for CBOR and CTAPHID framing
 
@@ -30,6 +33,9 @@ zig build test
 
 # Run property-based tests
 zig build test-pbt
+
+# Build C example
+zig build example
 ```
 
 ## Architecture
@@ -81,6 +87,7 @@ zig-ctap2/
   include/
     ctap2.h          -- C header (public API)
   src/
+    root.zig         -- Zig package API root
     ffi.zig          -- C FFI exports
     ctap2.zig        -- CTAP2 command encoding + response parsing
     cbor.zig         -- Minimal CBOR codec
@@ -99,6 +106,12 @@ zig-ctap2/
 - Zig 0.15.2+
 - macOS 13+ (IOKit) or Linux (hidraw)
 - USB security key (tested with YubiKey 5C NFC)
+
+## Apple Interop Scope
+
+zig-ctap2 parallels only the USB HID CTAP2 portion of an Apple authenticator flow. It does not replace AuthenticationServices UI, passkeys/iCloud Keychain, platform authenticators, browser mediation, Secure Enclave, LocalAuthentication, biometric prompts, or WebAuthn RP/origin policy.
+
+See [Apple Interop](guides/apple-interop.md) for Swift/Objective-C status and current parity gaps.
 
 ## Status
 

@@ -1,0 +1,46 @@
+name: Documentation or interop gap
+description: Request a docs, example, Swift/ObjC, WebAuthn, IOKit, or hidraw improvement.
+title: "docs: "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for docs and interop gaps. For current Apple analogs and non-goals, read https://transscendsurvival.org/zig-ctap2/guides/apple-interop/.
+  - type: textarea
+    id: gap
+    attributes:
+      label: Gap
+      description: What is missing or unclear?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Apple / Swift / Objective-C interop
+        - C ABI reference
+        - Zig package API
+        - WebAuthn mapping guide
+        - IOKit USB permissions
+        - Linux hidraw permissions
+        - Build or installation docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed change
+      description: Describe the example, section, or clarification you want to add.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not claim SwiftUI, AppKit, UIKit, Cocoa, AuthenticationServices UI, passkeys/iCloud Keychain, platform authenticator, Secure Enclave, LocalAuthentication, browser policy, or full WebAuthn replacement.
+        - label: This keeps CTAP2 USB HID transport truth separate from host application WebAuthn/RP/origin policy.

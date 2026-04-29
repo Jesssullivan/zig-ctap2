@@ -70,7 +70,7 @@ nix-check:
 
 # Show library info
 info:
-    @echo "zig-ctap2 v0.2.0"
+    @echo "zig-ctap2 v0.4.1"
     @echo "License: Zlib OR MIT"
     @echo ""
     @echo "Source files:"

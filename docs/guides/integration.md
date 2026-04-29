@@ -6,7 +6,7 @@ Add zig-ctap2 as a dependency in your `build.zig.zon`:
 
 ```zig
 .dependencies = .{
-    .ctap2 = .{
+    .zig_ctap2 = .{
         .url = "https://github.com/Jesssullivan/zig-ctap2/archive/refs/heads/main.tar.gz",
     },
 },
@@ -15,11 +15,11 @@ Add zig-ctap2 as a dependency in your `build.zig.zon`:
 Then in `build.zig`:
 
 ```zig
-const ctap2_dep = b.dependency("ctap2", .{
+const ctap2_dep = b.dependency("zig_ctap2", .{
     .target = target,
     .optimize = optimize,
 });
-exe.linkLibrary(ctap2_dep.artifact("ctap2"));
+exe.root_module.addImport("zig-ctap2", ctap2_dep.module("zig-ctap2"));
 ```
 
 ## As a C Static Library
@@ -69,6 +69,6 @@ print("Found \(deviceCount) FIDO2 devices")
 git submodule add https://github.com/Jesssullivan/zig-ctap2.git vendor/ctap2
 ```
 
-## Integration with cmux
+## WebView or Native App Integration
 
-This library powers the FIDO2/WebAuthn support in [cmux](https://github.com/Jesssullivan/cmux), integrated as a git submodule at `vendor/ctap2`. The JS bridge in WKWebView intercepts `navigator.credentials.create/get` and routes to libctap2 via Swift C FFI.
+For WebView, browser-shell, or native app integrations, keep the responsibilities separate: zig-ctap2 handles external-authenticator CTAP2 USB HID operations through C FFI; the host application remains responsible for WebAuthn JSON, origin/RP policy, mediation UX, attestation policy, and credential persistence.

@@ -1,50 +1,43 @@
 # zig-ctap2
 
-> Portable CTAP2/FIDO2 library in Zig -- direct USB HID communication with security keys (YubiKey, SoloKeys, etc.), no Apple entitlements or platform authentication frameworks needed.
+> Portable CTAP2/FIDO2 USB HID library in Zig with a stable C ABI for native applications on macOS and Linux.
 
-Part of the [Tinyland Zig Libraries](https://libs.tinyland.dev).
+Published docs: https://transscendsurvival.org/zig-ctap2/. License: Zlib OR MIT.
 
-## Installation
+## Docs
 
-```
-zig fetch --save git+https://github.com/Jesssullivan/zig-ctap2.git
-```
+- [README](https://github.com/Jesssullivan/zig-ctap2/blob/main/README.md): Overview, architecture, platform support, C and Zig API reference
+- [Documentation](https://transscendsurvival.org/zig-ctap2/): MkDocs site
+- [Apple interop](https://transscendsurvival.org/zig-ctap2/guides/apple-interop/): Swift/ObjC parity and gaps
+- [AGENTS](https://github.com/Jesssullivan/zig-ctap2/blob/main/AGENTS.md): Agent-oriented project summary
+- [C Header](https://github.com/Jesssullivan/zig-ctap2/blob/main/include/ctap2.h): Full C API declarations
 
-## Full Documentation
+## API Overview
 
-- [API reference](https://libs.tinyland.dev/api/zig-ctap2/): Zig autodoc
-- [llms-full.txt](https://raw.githubusercontent.com/Jesssullivan/zig-ctap2/main/llms-full.txt): Complete API dump for LLMs
-- [AGENTS.md](https://github.com/Jesssullivan/zig-ctap2/blob/main/AGENTS.md): Agent instructions
+16 C FFI functions in `ctap2.h`:
 
-## C API (17 functions)
+- `ctap2_device_count` -- enumerate connected FIDO2 devices
+- `ctap2_make_credential` -- register a credential and return raw CTAP2 response bytes
+- `ctap2_get_assertion` -- authenticate and return raw CTAP2 response bytes
+- `ctap2_get_info` -- query device capabilities
+- `ctap2_make_credential_parsed` -- register and parse credential ID plus attestation object
+- `ctap2_get_assertion_parsed` -- authenticate and parse credential ID, auth data, signature, and user handle
+- `ctap2_parse_make_credential_response` -- parse raw MakeCredential response without HID I/O
+- `ctap2_parse_get_assertion_response` -- parse raw GetAssertion response without HID I/O
+- `ctap2_get_pin_retries` -- read remaining PIN retries
+- `ctap2_get_pin_token` -- perform PIN protocol v2 token handshake
+- `ctap2_make_credential_with_pin` -- PIN-authenticated registration
+- `ctap2_get_assertion_with_pin` -- PIN-authenticated assertion
+- `ctap2_make_credential_with_keepalive` -- registration with keepalive callback
+- `ctap2_get_assertion_with_keepalive` -- assertion with keepalive callback
+- `ctap2_status_message` -- map CTAP2 status byte to static message
+- `ctap2_debug_last_ioreturn` -- return last macOS IOKit error code
 
-- `ctap2_device_count()`: Enumerate connected FIDO2 devices
-- `ctap2_get_info(buf, len)`: Query device capabilities (authenticatorGetInfo)
-- `ctap2_make_credential(...)`: Register a credential (raw CBOR response)
-- `ctap2_get_assertion(...)`: Authenticate with a credential (raw CBOR response)
-- `ctap2_make_credential_parsed(...)`: Register + parse (credential_id, attestation_object)
-- `ctap2_get_assertion_parsed(...)`: Authenticate + parse (credential_id, auth_data, signature, user_handle)
-- `ctap2_parse_make_credential_response(...)`: Parse raw MakeCredential response (no I/O)
-- `ctap2_parse_get_assertion_response(...)`: Parse raw GetAssertion response (no I/O)
-- `ctap2_get_pin_retries(retries)`: Get remaining PIN retry count
-- `ctap2_get_pin_token(pin, token, len)`: Full PIN protocol v2 handshake (ECDH + AES)
-- `ctap2_make_credential_with_pin(...)`: PIN-authenticated registration
-- `ctap2_get_assertion_with_pin(...)`: PIN-authenticated assertion
-- `ctap2_make_credential_with_keepalive(...)`: Registration with keepalive callback
-- `ctap2_get_assertion_with_keepalive(...)`: Assertion with keepalive callback
-- `ctap2_status_message(status)`: Map status byte to error string
-- `ctap2_debug_last_ioreturn()`: Last IOKit error code (macOS debug)
+## Platforms
 
-## Build
+- macOS: IOKit and CoreFoundation for USB HID
+- Linux: hidraw
 
-```
-zig build                    # build static library
-zig build test               # run unit tests
-zig build test-pbt           # property-based tests
-zig build docs               # generate API docs
-```
+## Apple Interop Scope
 
-## Platform Support
-
-- macOS (arm64, x86_64) -- IOKit + CoreFoundation
-- Linux (arm64, x86_64) -- hidraw
+zig-ctap2 implements external-authenticator CTAP2 over USB HID. Host applications remain responsible for AuthenticationServices/passkey UI, WebAuthn JSON, browser mediation, origin/RP policy, attestation policy, credential persistence, and UX.

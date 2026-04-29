@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'jess/**']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -31,6 +32,12 @@ jobs:
 
       - name: Run property-based tests
         run: zig build test-pbt
+
+      - name: Build static library
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Build C example
+        run: zig build example
 
   autodoc:
     name: Autodoc

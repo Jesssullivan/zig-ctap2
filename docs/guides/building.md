@@ -25,8 +25,7 @@ just               # list all recipes
 ## With Nix
 
 ```bash
-nix develop        # dev shell (zig, just, detect-secrets, pre-commit)
-nix build          # build library package
+nix develop        # dev shell with Zig 0.15.2
 ```
 
 ## Running Tests
@@ -40,6 +39,9 @@ zig build test-pbt
 
 # Hardware tests (requires YubiKey connected)
 YUBIKEY_TESTS=1 zig build test-hardware
+
+# C example build
+zig build example
 ```
 
 ## Cross-Compilation
@@ -63,4 +65,4 @@ When embedding in a hardened-runtime macOS app, add to your entitlements:
 
 The user must grant **Input Monitoring** permission in System Settings > Privacy & Security.
 
-No other entitlements needed -- no `com.apple.developer.web-browser.public-key-credential`, no provisioning profile.
+zig-ctap2 does not use `com.apple.developer.web-browser.public-key-credential` because it does not call AuthenticationServices WebAuthn/passkey UI. Applications still need the USB entitlement above when hardened runtime policies apply, and they remain responsible for their own WebAuthn, RP, origin, attestation, and UX policy.

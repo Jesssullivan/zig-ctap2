@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose a new CTAP2 feature, backend, packaging improvement, or integration path.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or integration problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the smallest useful change.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - C ABI
+        - Zig package API
+        - CTAP2 protocol
+        - CTAPHID transport
+        - PIN protocol
+        - macOS backend
+        - Linux backend
+        - Swift/Objective-C interop
+        - Documentation/example
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: compatibility
+    attributes:
+      label: Compatibility
+      options:
+        - label: The change can preserve the existing C ABI or clearly documents why an ABI addition is needed.
+        - label: The change can be tested with repo-managed `zig build` commands.
+        - label: The change does not add GUI toolkit dependencies such as SwiftUI, AppKit, UIKit, Cocoa, GTK, or Qt.

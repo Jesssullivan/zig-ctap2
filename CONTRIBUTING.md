@@ -2,7 +2,7 @@
 
 ## Installation
 
-### Zig Package Manager (recommended)
+### Zig Package Manager
 
 ```bash
 zig fetch --save git+https://github.com/Jesssullivan/zig-ctap2.git
@@ -11,7 +11,7 @@ zig fetch --save git+https://github.com/Jesssullivan/zig-ctap2.git
 Then in your `build.zig`:
 
 ```zig
-const dep = b.dependency("zig-ctap2", .{ .target = target, .optimize = optimize });
+const dep = b.dependency("zig_ctap2", .{ .target = target, .optimize = optimize });
 exe.root_module.addImport("zig-ctap2", dep.module("zig-ctap2"));
 ```
 
@@ -23,56 +23,57 @@ cd vendor/ctap2 && zig build -Doptimize=ReleaseFast
 ```
 
 Link `-lctap2` and include `ctap2.h`. At final link time, add platform frameworks:
-- **macOS:** `-framework IOKit -framework CoreFoundation`
-- **Linux:** no extra libraries needed (uses hidraw via kernel)
+
+- macOS: `-framework IOKit -framework CoreFoundation`
+- Linux: no extra libraries needed; runtime needs hidraw device access
 
 ## Development
 
 ### Prerequisites
 
-- Zig 0.14.1+
-- **macOS:** IOKit and CoreFoundation (available by default)
-- **Linux:** hidraw kernel support (enabled by default on most distributions)
-- **Hardware tests:** USB security key (YubiKey 5C NFC recommended)
+- Zig 0.15.2+
+- macOS: IOKit and CoreFoundation frameworks
+- Linux: hidraw support and read/write access to `/dev/hidraw*`
 
 ### Build & Test
 
 ```bash
-zig build                        # static library (libctap2.a)
-zig build test                   # unit tests (no hardware needed)
-zig build test-pbt               # property-based tests (1000 iterations)
-zig build test-hardware          # hardware tests (requires YubiKey + YUBIKEY_TESTS=1)
+zig build                        # static library
+zig build -Doptimize=ReleaseFast # optimized build
+zig build test                   # unit tests
+zig build test-pbt               # property-based tests
 zig build docs                   # generate API documentation
+zig build example                # build C example
 ```
+
+## Where to Start
+
+Start with issues labeled [`good first issue`](https://github.com/Jesssullivan/zig-ctap2/labels/good%20first%20issue) or [`help wanted`](https://github.com/Jesssullivan/zig-ctap2/labels/help%20wanted).
+
+Small, useful first contributions include:
+
+- SwiftPM/modulemap smoke tests
+- Objective-C bridging samples
+- C header nullability annotations
+- WebAuthn request/response mapping examples
+- Linux hidraw permission documentation
 
 ### Code Style
 
 - `zig fmt` for formatting
 - All `pub` and `export` functions need `///` doc comments
 - C FFI exports go in `src/ffi.zig`
-- Protocol implementations in `src/<module>.zig` (cbor, ctap2, ctaphid, pin)
-- Platform HID transports in `src/hid_macos.zig` and `src/hid_linux.zig`
-- Property-based tests in `tests/pbt_<module>.zig`
+- Zig package exports go through `src/root.zig`
+- Platform transports live in `src/hid_<platform>.zig`
+- Protocol modules stay independent from app/UI frameworks
 
-### Adding a new CTAP2 command
+### Adding a new operation
 
-1. Add the encoder/parser in `src/ctap2.zig` (or `src/pin.zig` for PIN commands)
-2. Add `export fn ctap2_<command>` wrapper in `src/ffi.zig`
-3. Add the C declaration to `include/ctap2.h`
-4. Add unit tests in the module
-5. Wire the test file into `build.zig`
-6. Update `AGENTS.md` FFI table
-
-### Hardware Testing
-
-Hardware tests require a physical FIDO2 security key:
-
-```bash
-# Connect a YubiKey, then:
-YUBIKEY_TESTS=1 zig build test-hardware
-```
-
-Tests run getInfo, enumerate devices, and verify CTAPHID framing against real hardware. They do not create or consume credentials.
+1. Add the protocol implementation to the relevant Zig module.
+2. Add or update the `src/ffi.zig` wrapper if the C ABI changes.
+3. Add the C declaration to `include/ctap2.h`.
+4. Add unit tests and property-based tests where applicable.
+5. Update `AGENTS.md`, README, and docs when public behavior changes.
 
 ## Filing Issues
 

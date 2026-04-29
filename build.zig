@@ -4,21 +4,23 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Zig module for package manager consumers
-    _ = b.addModule("zig-ctap2", .{
+    // Zig module for package manager consumers.
+    const zig_module = b.addModule("zig-ctap2", .{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    addFinalLinkDeps(zig_module, target);
+
+    // Static library for C FFI consumers.
+    const ffi_module = b.createModule(.{
         .root_source_file = b.path("src/ffi.zig"),
         .target = target,
         .optimize = optimize,
     });
-
-    // Static library for C FFI consumers
     const lib = b.addLibrary(.{
         .name = "ctap2",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/ffi.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = ffi_module,
         .linkage = .static,
     });
 
@@ -28,6 +30,27 @@ pub fn build(b: *std.Build) void {
     // find frameworks when -Dtarget is set to a different arch).
 
     b.installArtifact(lib);
+
+    // C example. Build only: running it enumerates real USB HID devices.
+    const example_step = b.step("example", "Build the C example");
+    const example_module = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+    });
+    example_module.link_libc = true;
+    example_module.addIncludePath(b.path("include"));
+    example_module.addCSourceFile(.{
+        .file = b.path("examples/device_count.c"),
+        .flags = &.{ "-std=c99", "-Wall", "-Wextra" },
+    });
+    example_module.linkLibrary(lib);
+    addFinalLinkDeps(example_module, target);
+
+    const example = b.addExecutable(.{
+        .name = "device_count",
+        .root_module = example_module,
+    });
+    example_step.dependOn(&example.step);
 
     // Unit tests
     const test_step = b.step("test", "Run unit tests (no hardware)");
@@ -115,29 +138,27 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    // hid_macos.zig needs IOKit + CoreFoundation at link time.
-    // (The static library skips this — Xcode links at final build —
-    //  but the test binary must resolve symbols itself.)
-    hw_test.root_module.linkFramework("IOKit", .{});
-    hw_test.root_module.linkFramework("CoreFoundation", .{});
+    // The hardware test binary must resolve platform HID symbols itself.
+    addFinalLinkDeps(hw_test.root_module, target);
 
     hw_step.dependOn(&b.addRunArtifact(hw_test).step);
 
     // Documentation generation
     const docs_step = b.step("docs", "Generate API documentation");
-    const docs_lib = b.addLibrary(.{
-        .name = "ctap2",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/ffi.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-        .linkage = .static,
-    });
     const install_docs = b.addInstallDirectory(.{
-        .source_dir = docs_lib.getEmittedDocs(),
+        .source_dir = lib.getEmittedDocs(),
         .install_dir = .prefix,
         .install_subdir = "docs",
     });
     docs_step.dependOn(&install_docs.step);
+}
+
+fn addFinalLinkDeps(module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    switch (target.result.os.tag) {
+        .macos => {
+            module.linkFramework("IOKit", .{});
+            module.linkFramework("CoreFoundation", .{});
+        },
+        else => {},
+    }
 }

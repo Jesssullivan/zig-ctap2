@@ -18,6 +18,7 @@
 | `ctap2_get_assertion_with_pin` | ctap2_get_assertion_with_pin |
 | `ctap2_make_credential_with_keepalive` | ctap2_make_credential_with_keepalive |
 | `ctap2_get_assertion_with_keepalive` | ctap2_get_assertion_with_keepalive |
+| `ctap2_status_message` | Map a CTAP2 status byte to a human-readable error message string. Returns a pointer to a static null-terminated string. |
 | `ctap2_debug_last_ioreturn` | Debug: get the last IOReturn error code from HID operations. |
 
 ---
@@ -126,6 +127,14 @@ int ctap2_make_credential_with_keepalive( const uint8_t *client_data_hash, const
 
 ```c
 int ctap2_get_assertion_with_keepalive( const uint8_t *client_data_hash, // 32 bytes const char *rp_id, // null-terminated const uint8_t *const *allow_list_ids, const size_t *allow_list_id_lens, size_t allow_list_count, ctap2_keepalive_callback_t keepalive_cb, // nullable uint8_t *result_buf, size_t result_buf_len );
+```
+
+### `ctap2_status_message`
+
+Map a CTAP2 status byte to a human-readable error message string. Returns a pointer to a static null-terminated string.
+
+```c
+const char *ctap2_status_message(uint8_t status);
 ```
 
 ### `ctap2_debug_last_ioreturn`

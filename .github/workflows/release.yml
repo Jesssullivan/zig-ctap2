@@ -44,6 +44,9 @@ jobs:
       - name: Build ReleaseFast
         run: zig build -Doptimize=ReleaseFast
 
+      - name: Build C example
+        run: zig build example
+
   autodoc:
     name: Autodoc
     runs-on: ubuntu-latest

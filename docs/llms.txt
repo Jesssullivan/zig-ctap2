@@ -4,14 +4,14 @@
 
 ## Overview
 
-zig-ctap2 is a standalone CTAP2/FIDO2 implementation in Zig that communicates directly with USB HID security keys (YubiKey, SoloKeys, etc.) without requiring platform authentication frameworks or restricted Apple entitlements.
+zig-ctap2 is a standalone CTAP2/FIDO2 USB HID implementation in Zig for external security keys. It exposes a stable C ABI and direct Zig package API; host applications remain responsible for WebAuthn JSON, origin/RP policy, attestation policy, and user experience.
 
 ## Key Facts
 
 - Language: Zig 0.15.2+
 - Platforms: macOS (IOKit), Linux (hidraw)
 - License: Zlib OR MIT
-- API: C FFI (16+ exported functions)
+- API: C FFI (16 exported functions)
 - Tested with: YubiKey 5C NFC
 
 ## C API Summary
@@ -49,6 +49,7 @@ Application -> C FFI (ffi.zig) -> CTAP2 commands (ctap2.zig) + PIN protocol (pin
 ## Source Files
 
 - src/ffi.zig -- C FFI exports
+- src/root.zig -- Zig package API root
 - src/ctap2.zig -- CTAP2 command encoding + response parsing
 - src/cbor.zig -- Minimal CBOR codec
 - src/ctaphid.zig -- CTAPHID framing (64-byte packets)
@@ -61,4 +62,5 @@ Application -> C FFI (ffi.zig) -> CTAP2 commands (ctap2.zig) + PIN protocol (pin
 ## Links
 
 - Repository: https://github.com/Jesssullivan/zig-ctap2
-- Documentation: https://jesssullivan.github.io/zig-ctap2/
+- Documentation: https://transscendsurvival.org/zig-ctap2/
+- Apple interop: https://transscendsurvival.org/zig-ctap2/guides/apple-interop/

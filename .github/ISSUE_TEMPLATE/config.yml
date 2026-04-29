@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Good first issues
+    url: https://github.com/Jesssullivan/zig-ctap2/labels/good%20first%20issue
+    about: Start here for scoped contributor tasks.
+  - name: Published documentation
+    url: https://transscendsurvival.org/zig-ctap2/
+    about: Read the API docs, integration guide, and Apple interop guide.

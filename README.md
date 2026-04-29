@@ -1,12 +1,18 @@
 # zig-ctap2
 
-Portable CTAP2/FIDO2 library in Zig — direct USB HID communication with security keys (YubiKey, SoloKeys, etc.), no Apple entitlements or platform authentication frameworks needed.
+Portable CTAP2/FIDO2 USB HID library in Zig with a stable C ABI for native applications on macOS and Linux.
 
 **License:** Zlib OR MIT
 
+**Docs:** https://transscendsurvival.org/zig-ctap2/
+
 ## Why
 
-Apple's `ASAuthorizationController` requires a restricted entitlement + provisioning profile for WebAuthn in general-purpose browsers. This library talks directly to FIDO2 devices over USB HID via IOKit (macOS) and hidraw (Linux), bypassing platform authentication frameworks entirely.
+Apple applications commonly reach passkeys and platform authenticators through AuthenticationServices (`ASAuthorizationController`, authorization providers, and app/browser entitlements). Linux-native applications commonly need a lower-level path to USB security keys through hidraw.
+
+zig-ctap2 provides a small, stable FFI boundary for CTAP2 over USB HID: device enumeration, makeCredential, getAssertion, getInfo, PIN protocol v2, keepalive callbacks, and raw-response parsing. It is useful when a native app needs portable external-authenticator operations without binding all credential logic to one OS application framework.
+
+It does not replace SwiftUI, AppKit, UIKit, Cocoa, AuthenticationServices UI, passkeys/iCloud Keychain, platform authenticators, browser WebAuthn policy, Secure Enclave, LocalAuthentication, biometric prompts, attestation policy validation, origin/RP policy, account sync, or application UI lifecycle.
 
 ## Features
 
@@ -16,12 +22,13 @@ Apple's `ASAuthorizationController` requires a restricted entitlement + provisio
 - **Minimal CBOR codec**: encoder/decoder for the CTAP2 subset (integers, byte/text strings, arrays, maps, booleans)
 - **Platform HID transports**: macOS (IOKit), Linux (hidraw)
 - **C FFI**: 16 exported functions callable from Swift, C, C++, or any language with C interop
+- **Zig package API**: Direct Zig imports use `src/root.zig`; C ABI exports stay in `src/ffi.zig`
 - **Error mapping**: All CTAP2 status codes mapped to human-readable messages
 - **Property-based tests**: 1000-iteration roundtrip tests for CBOR and CTAPHID framing
 
 ## Requirements
 
-- Zig 0.14.1+
+- Zig 0.15.2+
 - macOS 13+ (IOKit) or Linux (hidraw)
 - USB security key (tested with YubiKey 5C NFC)
 
@@ -36,7 +43,7 @@ zig fetch --save git+https://github.com/Jesssullivan/zig-ctap2.git
 Then in your `build.zig`:
 
 ```zig
-const dep = b.dependency("zig-ctap2", .{ .target = target, .optimize = optimize });
+const dep = b.dependency("zig_ctap2", .{ .target = target, .optimize = optimize });
 exe.root_module.addImport("zig-ctap2", dep.module("zig-ctap2"));
 ```
 
@@ -65,6 +72,9 @@ zig build test-pbt
 
 # Run hardware tests (requires YubiKey connected)
 YUBIKEY_TESTS=1 zig build test-hardware
+
+# Build C example
+zig build example
 ```
 
 With [just](https://just.systems) (recommended):
@@ -79,8 +89,7 @@ just              # list all recipes
 With Nix:
 
 ```bash
-nix develop       # dev shell (zig, just, detect-secrets, pre-commit)
-nix build         # build library package
+nix develop       # dev shell with Zig 0.15.2
 ```
 
 ## Architecture
@@ -264,7 +273,21 @@ int ioret = ctap2_debug_last_ioreturn();
 | `CTAP2_ERR_DEVICE` (-9) | CTAP2 device error (check status byte) |
 | `CTAP2_ERR_PIN` (-10) | PIN protocol error |
 
-## Entitlements
+## Apple / Swift / Objective-C Interop
+
+zig-ctap2 parallels only the USB HID CTAP2 portion of an Apple authenticator flow. The Apple analogs are `ASAuthorizationController` and WebAuthn/passkey APIs at the application layer, plus IOKit HID at the transport layer. This library implements the transport/protocol side, not the Apple UI, passkey, account, entitlement, or browser policy side.
+
+Current parity:
+
+- Available: C ABI callable from Swift, Objective-C, C, C++, and other FFI hosts.
+- Available: macOS USB HID transport through IOKit and CoreFoundation.
+- Available: Linux USB HID transport through hidraw.
+- Available: makeCredential, getAssertion, getInfo, CTAPHID framing, CTAP2 response parsing, PIN protocol v2, and keepalive callback variants.
+- Not yet available: SwiftPM/modulemap packaging, ObjC nullability annotations, dedicated Swift wrapper types, ObjC sample app, WebAuthn request/response helper types, attestation statement validation, origin/RP policy checks, browser mediation semantics, platform authenticators, passkeys/iCloud Keychain, Secure Enclave, LocalAuthentication, biometric prompts, NFC, BLE, or CTAP extensions such as hmac-secret/credProtect.
+
+Good starter contributions should focus on those interop and documentation gaps before expanding the ABI.
+
+## macOS USB Permissions
 
 On macOS with hardened runtime, add to your entitlements:
 
@@ -275,11 +298,11 @@ On macOS with hardened runtime, add to your entitlements:
 
 The user must grant **Input Monitoring** permission in System Settings > Privacy & Security.
 
-No other entitlements needed — no `com.apple.developer.web-browser.public-key-credential`, no provisioning profile, no Apple Developer portal configuration.
+zig-ctap2 does not use `com.apple.developer.web-browser.public-key-credential` because it does not call AuthenticationServices WebAuthn/passkey UI. Applications still need the USB entitlement above when hardened runtime policies apply, and they remain responsible for their own WebAuthn, RP, origin, attestation, and UX policy.
 
-## Integration with cmux
+## Contributing
 
-This library powers the FIDO2/WebAuthn support in [cmux](https://github.com/Jesssullivan/cmux) (fork), integrated as a git submodule at `vendor/ctap2`. The JS bridge in WKWebView intercepts `navigator.credentials.create/get` and routes to libctap2 via Swift C FFI.
+Start with the [`good first issue`](https://github.com/Jesssullivan/zig-ctap2/labels/good%20first%20issue) and [`help wanted`](https://github.com/Jesssullivan/zig-ctap2/labels/help%20wanted) queues. The best early contributions are small Swift/ObjC interop examples, documentation truthing, header annotations, WebAuthn mapping examples, and build/package smoke tests.
 
 ## Tested Devices
 

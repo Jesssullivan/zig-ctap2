@@ -2,14 +2,14 @@
 
 ## Persona
 
-You are working on zig-ctap2, a portable CTAP2/FIDO2 library written in Zig with a C FFI surface. It communicates directly with USB security keys (YubiKey, SoloKeys, etc.) over HID -- IOKit on macOS, hidraw on Linux. No Apple entitlements or platform authentication frameworks needed. Part of the [Tinyland Zig Libraries](https://libs.tinyland.dev).
+You are working on zig-ctap2, a portable CTAP2/FIDO2 USB HID library written in Zig with a C FFI surface. It communicates with external security keys (YubiKey, SoloKeys, etc.) over HID -- IOKit on macOS, hidraw on Linux. It is part of the Tinyland Zig Libraries.
 
 ## Stack
 
-- **Language:** Zig 0.14.1+
+- **Language:** Zig 0.15.2+
 - **Output:** Static C library (`libctap2.a`) + Zig module
 - **Dependencies:** None (pure Zig `std.crypto` for ECDH/AES/SHA/HMAC)
-- **Header:** `include/ctap2.h` (17 C FFI functions)
+- **Header:** `include/ctap2.h` (16 C FFI functions)
 - **Platform I/O:** IOKit + CoreFoundation (macOS), hidraw (Linux)
 - **Tests:** Unit tests per module + property-based tests (1000 iterations) + hardware integration tests (YubiKey)
 - **Docs:** Zig autodoc (`zig build docs`)
@@ -17,7 +17,8 @@ You are working on zig-ctap2, a portable CTAP2/FIDO2 library written in Zig with
 ## Structure
 
 ```
-src/ffi.zig          C FFI exports (17 functions)
+src/root.zig         Zig package API root
+src/ffi.zig          C FFI exports (16 functions)
 src/cbor.zig         Minimal CBOR encoder/decoder (CTAP2 subset)
 src/ctap2.zig        CTAP2 command encoding and response parsing
 src/ctaphid.zig      CTAPHID transport framing (64-byte packets)
@@ -40,6 +41,7 @@ zig build test                         # unit tests (no hardware)
 zig build test-pbt                     # property-based tests (1000 iterations)
 zig build test-hardware                # hardware tests (needs YubiKey)
 zig build docs                         # generate API documentation
+zig build example                      # build C usage example
 ```
 
 ## Style
@@ -47,6 +49,7 @@ zig build docs                         # generate API documentation
 - Format with `zig fmt`
 - All `pub` and `export` functions require `///` doc comments
 - C FFI exports live exclusively in `src/ffi.zig`
+- Zig package exports go through `src/root.zig`
 - Protocol implementations in `src/<module>.zig` (cbor, ctap2, ctaphid, pin)
 - Platform HID transports in `src/hid_macos.zig` and `src/hid_linux.zig`
 - Property-based tests in `tests/pbt_<module>.zig`
@@ -55,6 +58,7 @@ zig build docs                         # generate API documentation
 ## Boundaries
 
 - **Do not** add browser or WebKit dependencies -- this is a USB HID library
+- **Do not** claim SwiftUI, AppKit, UIKit, Cocoa, AuthenticationServices UI, passkeys/iCloud Keychain, platform authenticators, browser WebAuthn policy, Secure Enclave, LocalAuthentication, biometric prompts, attestation policy validation, origin/RP policy, account sync, or application UI lifecycle replacement
 - **Do not** bypass USB HID framing (CTAPHID packet structure is required by spec)
 - **Do not** introduce OpenSSL, BoringSSL, CommonCrypto, or any C crypto dependency
 - **Do not** add allocator-dependent APIs to the FFI surface (all buffers are caller-provided)

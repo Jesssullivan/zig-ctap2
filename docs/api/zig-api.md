@@ -333,7 +333,7 @@ pub fn close(self: *Device) void
 ```
 
 #### `enumerate`
-Enumerate connected FIDO2 USB HID devices.
+Enumerate connected FIDO2 USB HID devices. Scans /sys/class/hidraw/ to discover all hidraw devices (not limited to a fixed range). Returns DevicesNotAccessible if FIDO devices are found but none could be opened (likely a permissions issue).
 
 ```zig
 pub fn enumerate(allocator: std.mem.Allocator) ![]Device
@@ -523,4 +523,16 @@ Encode a getAssertion command with pinAuth and pinUvAuthProtocol.
 ```zig
 pub fn encodeGetAssertionWithPIN( buf: []u8, rp_id: []const u8, client_data_hash: []const u8, allow_list_ids: []const []const u8, pin_token: [32]u8, ) cbor.Error![]const u8
 ```
+
+## `root.zig`
+*Public Zig package API for zig-ctap2.*
+
+### Constants
+
+- `cbor`
+- `ctap2`
+- `ctaphid`
+- `hid`
+- `pin`
+- `statusMessage`
 
